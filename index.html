@@ -1224,35 +1224,60 @@ function ConvertToContentModal({ idea, onConvert, onClose }) {
   );
 }
 
-function IdeaCard({ idea, onDelete, onStar, onConvert }) {
+function IdeaCard({ idea, onDelete, onStar, onConvert, onUpdate }) {
   const [hoverX, setHoverX] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [ctx, setCtx] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(idea.text);
+  const [editSource, setEditSource] = useState(idea.source || '');
+  const textRef = useRef(null);
+  useEffect(() => { if (editing && textRef.current) textRef.current.focus(); }, [editing]);
+  const saveEdit = () => {
+    if (editText.trim()) onUpdate({ ...idea, text: editText.trim(), source: editSource.trim() || null });
+    setEditing(false);
+  };
   return (
     <>
     <div onContextMenu={e=>{e.preventDefault();setCtx({x:e.clientX,y:e.clientY});}}
       onMouseEnter={()=>setHoverX(true)} onMouseLeave={()=>setHoverX(false)}
-      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'16px',transition:'border-color 0.15s',position:'relative',cursor:'default' }}
-      onMouseOver={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseOut={e=>e.currentTarget.style.borderColor='var(--border)'}>
+      onClick={()=>{ if(!editing) setEditing(true); }}
+      style={{ background:'var(--surface)',border:'1px solid '+(editing?'var(--border-light)':'var(--border)'),borderRadius:'var(--radius)',padding:'16px',transition:'border-color 0.15s',position:'relative',cursor:editing?'default':'pointer' }}
+      onMouseOver={e=>{if(!editing)e.currentTarget.style.borderColor='var(--border-light)';}} onMouseOut={e=>{if(!editing)e.currentTarget.style.borderColor='var(--border)';}}>
       {/* Star + Delete */}
       <div style={{ position:'absolute',top:'10px',right:'10px',display:'flex',gap:'4px',alignItems:'center' }}>
-        <button onClick={()=>onStar(idea.id)} style={{ background:'transparent',border:'none',cursor:'pointer',fontSize:'14px',color:idea.starred?'var(--yellow)':'var(--text-muted)',opacity:idea.starred?1:(hoverX?0.6:0),transition:'opacity 0.15s, color 0.15s',padding:'2px' }}>{idea.starred?'★':'☆'}</button>
-        {hoverX && <button onClick={()=>setConfirmDel(true)} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,transition:'color 0.15s',padding:'2px' }}
+        <button onClick={e=>{e.stopPropagation();onStar(idea.id);}} style={{ background:'transparent',border:'none',cursor:'pointer',fontSize:'14px',color:idea.starred?'var(--yellow)':'var(--text-muted)',opacity:idea.starred?1:(hoverX?0.6:0),transition:'opacity 0.15s, color 0.15s',padding:'2px' }}>{idea.starred?'★':'☆'}</button>
+        {hoverX && <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,transition:'color 0.15s',padding:'2px' }}
           onMouseEnter={e=>e.currentTarget.style.color='var(--red)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>&times;</button>}
       </div>
       {/* Body */}
-      <div style={{ fontSize:'13.5px',fontWeight:500,lineHeight:1.55,marginBottom:'10px',paddingRight:'50px',color:'var(--text)' }}>{idea.text}</div>
-      {/* Tags */}
-      <div style={{ display:'flex',gap:'5px',flexWrap:'wrap',marginBottom:'8px' }}>
-        {idea.tags.map(t => <span key={t} style={{ fontSize:'10px',fontWeight:500,padding:'2px 8px',background:'var(--purple)'+'12',color:'var(--purple)',borderRadius:'4px' }}>#{t}</span>)}
-      </div>
-      {/* Meta */}
-      <div style={{ display:'flex',gap:'10px',alignItems:'center',fontSize:'11px',color:'var(--text-muted)' }}>
-        {idea.source && <span style={{ padding:'2px 7px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'4px' }}>{idea.source}</span>}
-        <span>{timeAgo(idea.createdAt)}</span>
-      </div>
+      {editing ? (
+        <div onClick={e=>e.stopPropagation()}>
+          <textarea ref={textRef} value={editText} onChange={e=>setEditText(e.target.value)}
+            rows={3} style={{ width:'100%',fontSize:'13.5px',fontWeight:500,lineHeight:1.55,marginBottom:'10px',padding:'4px 0',paddingRight:'50px' }}
+            onKeyDown={e=>{ if(e.key==='Enter'&&e.metaKey) saveEdit(); if(e.key==='Escape'){setEditing(false);setEditText(idea.text);setEditSource(idea.source||'');}}} />
+          <div style={{ display:'flex',gap:'8px',alignItems:'center',marginBottom:'10px' }}>
+            <input value={editSource} onChange={e=>setEditSource(e.target.value)} placeholder="Source (optional)"
+              style={{ fontSize:'12px',padding:'5px 8px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',width:'160px' }} />
+          </div>
+          <div style={{ display:'flex',gap:'6px',justifyContent:'flex-end' }}>
+            <button onClick={()=>{setEditing(false);setEditText(idea.text);setEditSource(idea.source||'');}} style={{ padding:'5px 12px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',cursor:'pointer',fontSize:'11px' }}>Cancel</button>
+            <button onClick={saveEdit} style={{ padding:'5px 12px',background:'var(--green)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',cursor:'pointer',fontSize:'11px',fontWeight:600 }}>Save · ⌘↵</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize:'13.5px',fontWeight:500,lineHeight:1.55,marginBottom:'8px',paddingRight:'50px',color:'var(--text)' }}>{idea.text}</div>
+          {/* Meta */}
+          <div style={{ display:'flex',gap:'10px',alignItems:'center',fontSize:'11px',color:'var(--text-muted)' }}>
+            {idea.source && <span style={{ padding:'2px 7px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'4px' }}>{idea.source}</span>}
+            <span>{timeAgo(idea.createdAt)}</span>
+          </div>
+        </>
+      )}
     </div>
     {ctx && <ContextMenu x={ctx.x} y={ctx.y} onClose={()=>setCtx(null)} options={[
+      { icon:'✎', label:'Edit', action:()=>setEditing(true) },
       { icon:'★', label:idea.starred?'Unstar':'Star', action:()=>onStar(idea.id) },
       { icon:'↗', label:'Convert to Content', action:()=>onConvert(idea) },
       { divider:true },
@@ -1265,7 +1290,6 @@ function IdeaCard({ idea, onDelete, onStar, onConvert }) {
 
 function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, setContent }) {
   const [search, setSearch] = useState('');
-  const [filterTag, setFilterTag] = useState('all');
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState('');
   const [newTags, setNewTags] = useState('');
@@ -1278,14 +1302,9 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
   const profileCounts = {};
   PROFILES.forEach(p => { profileCounts[p.id] = (ideas[p.id]||[]).length; });
 
-  // Collect all tags
-  const allTags = [...new Set(profileIdeas.flatMap(i => i.tags))].sort();
-
   // Filter
   const filtered = profileIdeas.filter(i => {
-    const matchSearch = (i.text + i.tags.join(' ') + (i.source||'')).toLowerCase().includes(search.toLowerCase());
-    const matchTag = filterTag === 'all' || i.tags.includes(filterTag);
-    return matchSearch && matchTag;
+    return (i.text + i.tags.join(' ') + (i.source||'')).toLowerCase().includes(search.toLowerCase());
   }).sort((a, b) => {
     if (a.starred && !b.starred) return -1;
     if (!a.starred && b.starred) return 1;
@@ -1307,6 +1326,7 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
   };
   const removeIdea = (id) => setIdeas(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).filter(i=>i.id!==id) }));
   const toggleStar = (id) => setIdeas(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).map(i=>i.id===id?{...i,starred:!i.starred}:i) }));
+  const updateIdea = (updated) => setIdeas(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).map(i=>i.id===updated.id?updated:i) }));
   const handleConvert = ({ title, type, platforms, notes }) => {
     const newItem = { id:'c'+Date.now(), title, type, stage:'source', platforms, age:null, notes, images:[], dueDate:'' };
     setContent(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), newItem] }));
@@ -1317,34 +1337,16 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
   return (
     <div style={{ flex:1,overflow:'auto',padding:'28px 32px' }}>
       <div style={{ marginBottom:'20px' }}>
-        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px' }}>
           <h1 style={{ fontSize:'15px',fontWeight:600 }}>Ideas</h1>
-          <div style={{ display:'flex',gap:'8px',alignItems:'center' }}>
-            <ProfileSwitcher active={activeProfile} onSwitch={setActiveProfile} counts={profileCounts} />
+          <ProfileSwitcher active={activeProfile} onSwitch={setActiveProfile} counts={profileCounts} />
+          <div style={{ marginLeft:'auto',display:'flex',gap:'8px',alignItems:'center' }}>
             <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 12px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)',width:'180px' }}>
               <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search ideas..." style={{ fontSize:'12px',width:'100%' }} />
             </div>
             <button onClick={()=>setAdding(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New</button>
           </div>
-        </div>
-        {/* Tag filter pills */}
-        <div style={{ display:'flex',gap:'5px',flexWrap:'wrap',marginBottom:'16px' }}>
-          <button onClick={()=>setFilterTag('all')} style={{
-            padding:'4px 10px',borderRadius:'12px',fontSize:'11px',cursor:'pointer',
-            border:filterTag==='all'?'1px solid var(--border-light)':'1px solid transparent',
-            background:filterTag==='all'?'var(--surface-hover)':'transparent',
-            color:filterTag==='all'?'var(--text)':'var(--text-muted)',fontWeight:filterTag==='all'?500:400,
-          }}>All <span style={{ opacity:0.6 }}>{profileIdeas.length}</span></button>
-          {allTags.map(t => (
-            <button key={t} onClick={()=>setFilterTag(filterTag===t?'all':t)} style={{
-              padding:'4px 10px',borderRadius:'12px',fontSize:'11px',cursor:'pointer',
-              border:filterTag===t?'1px solid var(--purple)'+'40':'1px solid transparent',
-              background:filterTag===t?'var(--purple)'+'12':'transparent',
-              color:filterTag===t?'var(--text)':'var(--text-muted)',fontWeight:filterTag===t?500:400,
-              transition:'all 0.15s',
-            }}>#{t}</button>
-          ))}
         </div>
       </div>
 
@@ -1368,7 +1370,7 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
       {/* Ideas list */}
       <div style={{ display:'flex',flexDirection:'column',gap:'8px' }}>
         {filtered.map(idea => (
-          <IdeaCard key={idea.id} idea={idea} onDelete={removeIdea} onStar={toggleStar} onConvert={(i)=>setConvertIdea(i)} />
+          <IdeaCard key={idea.id} idea={idea} onDelete={removeIdea} onStar={toggleStar} onConvert={(i)=>setConvertIdea(i)} onUpdate={updateIdea} />
         ))}
         {filtered.length === 0 && (
           <div style={{ textAlign:'center',padding:'48px 0',color:'var(--text-muted)',fontSize:'13px' }}>

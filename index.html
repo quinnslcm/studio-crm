@@ -1840,23 +1840,13 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
     const targetView = sidebarViews.find(v => v.id === targetId);
     if (!dragView || !targetView) { setDragId(null); setDragOverId(null); return; }
 
-    const dragIsChild = !!dragView.parent;
-    const targetIsTopLevel = !targetView.parent;
-
-    if (dragIsChild && targetIsTopLevel) {
-      // Child dropped on a top-level item → unnest and place next to target
+    // Drop on a top-level item → nest under it
+    if (!targetView.parent) {
+      handleNestUnder(dragId, targetId);
+    }
+    // Drop on a child → unnest the dragged item (move to top level)
+    else if (dragView.parent) {
       handleUnnest(dragId);
-    } else if (!dragIsChild && targetIsTopLevel) {
-      // Top-level dropped on top-level → reorder
-      setSidebarViews(prev => {
-        const filtered = prev.filter(v => v.id !== dragId);
-        const targetIdx = filtered.findIndex(v => v.id === targetId);
-        filtered.splice(targetIdx, 0, dragView);
-        return filtered;
-      });
-    } else if (!dragIsChild && !targetIsTopLevel) {
-      // Top-level dropped on a child → nest under that child's parent
-      handleNestUnder(dragId, targetView.parent);
     }
     setDragId(null);
     setDragOverId(null);

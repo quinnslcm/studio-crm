@@ -1834,45 +1834,28 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
 
   const handleDrop = (targetId) => {
     if (!dragId || dragId === targetId) { setDragId(null); setDragOverId(null); return; }
-    setSidebarViews(prev => {
-      let views = prev.map(v => ({ ...v, children: [...(v.children||[])] }));
-      const dragView = views.find(v => v.id === dragId);
-      const targetView = views.find(v => v.id === targetId);
-      if (!dragView || !targetView) return prev;
+    const dragView = sidebarViews.find(v => v.id === dragId);
+    const targetView = sidebarViews.find(v => v.id === targetId);
+    if (!dragView || !targetView) { setDragId(null); setDragOverId(null); return; }
 
-      // Remove drag from old parent's children
-      views = views.map(v => ({ ...v, children: (v.children||[]).filter(c => c !== dragId) }));
+    const dragIsChild = !!dragView.parent;
+    const targetIsTopLevel = !targetView.parent;
 
-      // If dropping on a parent-level item, nest under it
-      if (!targetView.parent) {
-        const dragIdx = views.findIndex(v => v.id === dragId);
-        const targetIdx = views.findIndex(v => v.id === targetId);
-
-        // If drag item was a parent, make it a child of target
-        if (!dragView.parent && dragIdx !== targetIdx) {
-          // Reorder at top level: move dragView before/after targetView
-          const filtered = views.filter(v => v.id !== dragId);
-          const newTargetIdx = filtered.findIndex(v => v.id === targetId);
-          const insertIdx = dragIdx < targetIdx ? newTargetIdx + 1 : newTargetIdx;
-          filtered.splice(insertIdx, 0, { ...dragView, parent: undefined });
-          return filtered;
-        }
-        // If drag was a child, unnest it
-        return views.map(v => v.id === dragId ? { ...v, parent: undefined } : v);
-      } else {
-        // Dropping on a child — reorder within same parent or move
-        const parentId = targetView.parent;
-        const parent = views.find(v => v.id === parentId);
-        if (parent) {
-          const children = (parent.children||[]).filter(c => c !== dragId);
-          const targetChildIdx = children.indexOf(targetId);
-          children.splice(targetChildIdx, 0, dragId);
-          views = views.map(v => v.id === parentId ? { ...v, children } : v);
-          views = views.map(v => v.id === dragId ? { ...v, parent: parentId } : v);
-        }
-        return views;
-      }
-    });
+    if (dragIsChild && targetIsTopLevel) {
+      // Child dropped on a top-level item → unnest and place next to target
+      handleUnnest(dragId);
+    } else if (!dragIsChild && targetIsTopLevel) {
+      // Top-level dropped on top-level → reorder
+      setSidebarViews(prev => {
+        const filtered = prev.filter(v => v.id !== dragId);
+        const targetIdx = filtered.findIndex(v => v.id === targetId);
+        filtered.splice(targetIdx, 0, dragView);
+        return filtered;
+      });
+    } else if (!dragIsChild && !targetIsTopLevel) {
+      // Top-level dropped on a child → nest under that child's parent
+      handleNestUnder(dragId, targetView.parent);
+    }
     setDragId(null);
     setDragOverId(null);
   };
@@ -1894,9 +1877,10 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
       </div>
       <div style={{ padding:'14px 10px 0', flex:1 }}>
         <div onDragOver={e => { e.preventDefault(); setDragOverId('__views_header__'); }}
+          onDragLeave={() => { if(dragOverId==='__views_header__') setDragOverId(null); }}
           onDrop={handleViewsHeaderDrop}
-          style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color: dragOverId === '__views_header__' ? 'var(--green)' : 'var(--text-muted)',padding:'0 10px 6px',transition:'color 0.15s',borderRadius:'4px',background:dragOverId==='__views_header__'?'rgba(16,185,129,0.05)':'transparent' }}>
-          Views {dragId && <span style={{ fontSize:'9px',fontWeight:400,letterSpacing:'0.02em',opacity:0.7 }}>· drop here to unnest</span>}
+          style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color: dragOverId === '__views_header__' ? 'var(--green)' : 'var(--text-muted)',padding: dragId ? '8px 10px' : '0 10px 6px',transition:'all 0.15s',borderRadius:'6px',background:dragOverId==='__views_header__'?'rgba(16,185,129,0.08)':'transparent',border: dragId ? '1px dashed '+(dragOverId==='__views_header__'?'var(--green)':'var(--border)'):'1px dashed transparent',marginBottom: dragId ? '4px' : '0' }}>
+          Views {dragId && <span style={{ fontSize:'9px',fontWeight:400,letterSpacing:'0.02em',opacity:0.7 }}> · drop to unnest</span>}
         </div>
         {topLevel.map(v => {
           const children = getChildren(v.id);

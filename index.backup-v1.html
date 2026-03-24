@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Studio CRM</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #09090b; --surface: #131316; --surface-hover: #19191d;
+      --border: #1c1c22; --border-light: #26262e;
+      --text: #ececef; --text-secondary: #71717a; --text-muted: #3f3f46;
+      --green: #34d399; --purple: #a78bfa; --orange: #fb923c;
+      --cyan: #22d3ee; --blue: #60a5fa; --red: #f87171; --yellow: #fbbf24;
+      --radius: 8px; --radius-sm: 6px;
+    }
+    body { font-family: 'DM Sans', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; overflow: hidden; height: 100vh; }
+    #root { height: 100vh; }
+    ::-webkit-scrollbar { width: 3px; height: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+    input, textarea { font-family: inherit; background: transparent; border: none; color: var(--text); outline: none; resize: none; }
+    input::placeholder, textarea::placeholder { color: var(--text-muted); }
+    button { font-family: inherit; }
+    .grid-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px; opacity: 0.35;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+    }
+    .drop-target { outline: 2px dashed var(--border-light); outline-offset: -2px; border-radius: var(--radius); background: rgba(255,255,255,0.02); }
+    .card-dragging { opacity: 0.4; }
+
+    /* ── Liquid glass glow animations ──────────────────────────── */
+    @keyframes glowPulse {
+      0% { box-shadow: 0 0 0px rgba(52, 211, 153, 0); }
+      50% { box-shadow: 0 0 20px rgba(52, 211, 153, 0.15), 0 0 40px rgba(52, 211, 153, 0.05); }
+      100% { box-shadow: 0 0 0px rgba(52, 211, 153, 0); }
+    }
+    @keyframes glowFadeIn {
+      0% { opacity: 0; transform: translateY(-4px) scale(0.97); filter: blur(4px); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+    }
+    @keyframes modalGlow {
+      0% { opacity: 0; transform: scale(0.96); box-shadow: 0 0 0 rgba(52,211,153,0); }
+      60% { box-shadow: 0 0 30px rgba(52,211,153,0.12), 0 0 60px rgba(52,211,153,0.04); }
+      100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 rgba(52,211,153,0); }
+    }
+    @keyframes contentFade {
+      0% { opacity: 0; transform: translateY(6px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .glow-pulse { animation: glowPulse 0.6s ease-out; }
+    .dropdown-enter { animation: glowFadeIn 0.2s ease-out; }
+    .modal-enter { animation: modalGlow 0.35s ease-out; }
+    .content-fade { animation: contentFade 0.25s ease-out; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+const fmtFull = n => '$' + n.toLocaleString();
+const fmtShort = n => { if (n >= 1e6) return '$'+(n/1e6).toFixed(1)+'M'; if (n >= 1e3) return '$'+Math.round(n/1e3)+'K'; return '$'+n; };
+
+const PROFILE_COLORS = { culture:'#22d3ee','marc-randolph':'#a78bfa', quinn:'#fb923c', lightwork:'#34d399' };
+const PROFILES = [{ id:'culture',label:'@culture' },{ id:'marc-randolph',label:'Marc Randolph' },{ id:'quinn',label:'Quinn' },{ id:'lightwork',label:'Lightwork' }];
+
+const initDeals = () => ({
+  culture: [
+    { id:'d1',title:'Ramp // @culture',value:75000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d2',title:'Nike // Culture Partnership',value:120000,stage:'negotiating',assignee:'Kendall',notes:'',images:[] },
+    { id:'d3',title:'Hennessy // Culture Events',value:50000,stage:'outreach',assignee:'Kendall',notes:'',images:[] },
+  ],
+  'marc-randolph': [
+    { id:'d4',title:'Ramp // Marc Randolph',value:200000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d5',title:'Mercury // Marc Randolph',value:300000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d6',title:'Netflix // Documentary Deal',value:120000,stage:'lead',assignee:'Kendall',notes:'Initial conversations with Netflix team. Potential 6-part series.',images:[] },
+    { id:'d7',title:'SXSW // Keynote Package',value:45000,stage:'outreach',assignee:'Kendall',notes:'',images:[] },
+    { id:'d8',title:'HarperCollins // Book Deal',value:85000,stage:'negotiating',assignee:'Kendall',notes:'Advance discussion in progress.',images:[] },
+    { id:'d9',title:'Spotify // Podcast S4',value:75000,stage:'closed',assignee:'Kendall',notes:'Season 4 greenlit. 10 episodes.',images:[] },
+  ],
+  quinn: [{ id:'d10',title:'Ramp // Quinn Projects',value:50000,stage:'lead',assignee:'Kendall',notes:'',images:[] }],
+  lightwork: [
+    { id:'d11',title:'Ramp // Lightwork Fractional New Media',value:100000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d12',title:'Adidas // Creative Package',value:150000,stage:'closed',assignee:'Kendall',notes:'Deliverables shipped Q1.',images:[] },
+    { id:'d13',title:'Spotify // Retainer',value:180000,stage:'negotiating',assignee:'Kendall',notes:'',images:[] },
+  ],
+});
+
+const initContent = () => ({
+  culture: [
+    { id:'c1',title:'Underground Sounds Ep 1',type:'Long-form',stage:'source',platforms:['YouTube','Newsletter'],age:null,notes:'',images:[] },
+    { id:'c2',title:'Community Spotlight — March',type:'Carousel',stage:'platform-ready',platforms:['Instagram','LinkedIn'],age:'1d',notes:'',images:[] },
+    { id:'c3',title:'Event Recap — NYC Mixer',type:'Short-form',stage:'posted',platforms:['TikTok','Instagram'],age:'5d',notes:'',images:[] },
+  ],
+  'marc-randolph': [
+    { id:'c4',title:'Ep 47 — Netflix founding story',type:'Long-form',stage:'source',platforms:['YouTube','Newsletter'],age:null,notes:'Raw footage captured. Editing next week.',images:[] },
+    { id:'c5',title:'Ep 46 — "Quit your job" carousel',type:'Carousel',stage:'platform-ready',platforms:['Instagram','LinkedIn'],age:'2d',notes:'',images:[] },
+    { id:'c6',title:'"Start before ready" thread',type:'Thread',stage:'tweets',platforms:['X'],age:'1d',notes:'',images:[] },
+    { id:'c7',title:'Ep 45 — Advice for founders',type:'Long-form',stage:'posted',platforms:['YouTube','Spotify'],age:'7d',notes:'',images:[] },
+  ],
+  quinn: [{ id:'c8',title:'Creative Direction Reel',type:'Short-form',stage:'source',platforms:['Instagram','TikTok'],age:null,notes:'',images:[] }],
+  lightwork: [{ id:'c9',title:'Studio CRM — Product Demo',type:'Long-form',stage:'source',platforms:['YouTube','X'],age:null,notes:'',images:[] }],
+});
+
+const DEAL_STAGES = ['lead','outreach','negotiating','closed','lost'];
+const DEAL_LABELS = { lead:'LEAD',outreach:'OUTREACH',negotiating:'NEGOTIATING',closed:'CLOSED',lost:'LOST' };
+const CONTENT_STAGES = ['source','tweets','platform-ready','posted'];
+const CONTENT_LABELS = { source:'SOURCE',tweets:'TWEETS','platform-ready':'PLATFORM READY',posted:'POSTED' };
+const TYPE_COLORS = { 'Long-form':'#a78bfa','Carousel':'#a78bfa','Short-form':'#60a5fa','Thread':'#fb923c' };
+
+/* ── Drag context ──────────────────────────────────────────────────────── */
+let dragData = null;
+
+/* ── Profile Switcher ──────────────────────────────────────────────────── */
+function ProfileSwitcher({ active, onSwitch, counts }) {
+  const [open, setOpen] = useState(false);
+  const [glowing, setGlowing] = useState(false);
+  const ref = useRef(null);
+  const p = PROFILES.find(x => x.id === active);
+  const color = PROFILE_COLORS[active];
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const id = setTimeout(() => document.addEventListener('click', h), 0);
+    return () => { clearTimeout(id); document.removeEventListener('click', h); };
+  }, [open]);
+  const handleSwitch = (id) => { onSwitch(id); setOpen(false); setGlowing(true); setTimeout(() => setGlowing(false), 600); };
+  return (
+    <div ref={ref} style={{ position:'relative', display:'inline-flex' }}>
+      <button className={glowing ? 'glow-pulse' : ''} onClick={() => setOpen(!open)} style={{ display:'flex',alignItems:'center',gap:'8px',padding:'6px 14px 6px 10px',background:color+'18',border:`1px solid ${color}35`,borderRadius:'20px',cursor:'pointer',color:'#fff',fontSize:'13px',fontWeight:500,transition:'all 0.3s ease, box-shadow 0.3s ease' }}>
+        <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:color,transition:'background 0.3s ease' }} />
+        {p?.label}
+        <span style={{ fontSize:'11px',opacity:0.6 }}>{counts[active]||0}</span>
+        <span style={{ fontSize:'10px',marginLeft:'2px',opacity:0.5,transition:'transform 0.2s ease',transform:open?'rotate(180deg)':'rotate(0)' }}>{'\u25BC'}</span>
+      </button>
+      {open && <div className="dropdown-enter" style={{ position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:50,background:'rgba(21,21,24,0.9)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',border:'1px solid var(--border-light)',borderRadius:'var(--radius)',padding:'4px',minWidth:'200px',boxShadow:'0 12px 40px rgba(0,0,0,0.5), 0 0 20px rgba(52,211,153,0.06)' }}>
+        {PROFILES.map(pr => { const c = PROFILE_COLORS[pr.id]; const a = pr.id===active; return (
+          <button key={pr.id} onClick={() => handleSwitch(pr.id)} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'9px 12px',width:'100%',background:a?c+'15':'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:a?'#fff':'var(--text-secondary)',fontSize:'13px',textAlign:'left' }}
+            onMouseEnter={e => { if(!a) e.currentTarget.style.background='var(--surface-hover)'; }}
+            onMouseLeave={e => { if(!a) e.currentTarget.style.background='transparent'; }}>
+            <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:c }} />
+            <span style={{ flex:1 }}>{pr.label}</span>
+            <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>{counts[pr.id]||0}</span>
+          </button>);
+        })}
+      </div>}
+    </div>
+  );
+}
+
+/* ── Quick Links ───────────────────────────────────────────────────────── */
+function QuickLinks() {
+  const [links, setLinks] = useState([
+    { id:'l1',name:'Figma',icon:'F',color:'#a78bfa',url:'https://figma.com',connected:true },
+    { id:'l2',name:'Google Drive',icon:'G',color:'#fbbf24',url:'https://drive.google.com',connected:true },
+    { id:'l3',name:'YouTube Studio',icon:'\u25B6',color:'#f87171',url:'https://studio.youtube.com',connected:true },
+  ]);
+  const [adding, setAdding] = useState(false);
+  const [nn, setNn] = useState('');
+  const [nu, setNu] = useState('');
+  const ir = useRef(null);
+  useEffect(() => { if (adding && ir.current) ir.current.focus(); }, [adding]);
+  const add = () => { if (!nn.trim()||!nu.trim()) return; const cs=['#a78bfa','#fbbf24','#34d399','#60a5fa','#fb923c','#f87171']; setLinks([...links,{id:'l'+Date.now(),name:nn.trim(),icon:nn.trim()[0].toUpperCase(),color:cs[links.length%cs.length],url:nu.trim().startsWith('http')?nu.trim():'https://'+nu.trim(),connected:true}]); setNn(''); setNu(''); setAdding(false); };
+  const rm = id => setLinks(links.filter(l=>l.id!==id));
+  return (
+    <div style={{ display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap' }}>
+      {links.map(l => (
+        <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:'7px',padding:'5px 10px',textDecoration:'none',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'16px',fontSize:'12px',color:'var(--text-secondary)',cursor:'pointer' }}
+          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+          <span style={{ width:'16px',height:'16px',borderRadius:'3px',display:'flex',alignItems:'center',justifyContent:'center',background:l.color+'20',color:l.color,fontSize:'9px',fontWeight:700 }}>{l.icon}</span>
+          {l.name}
+          <span style={{ width:'5px',height:'5px',borderRadius:'50%',background:l.connected?'var(--green)':'var(--text-muted)' }} />
+          <span onClick={e=>{e.preventDefault();e.stopPropagation();rm(l.id);}} style={{ fontSize:'11px',color:'var(--text-muted)',cursor:'pointer',marginLeft:'2px',lineHeight:1 }}>&times;</span>
+        </a>
+      ))}
+      {adding ? (
+        <div style={{ display:'inline-flex',alignItems:'center',gap:'4px',padding:'4px 8px',background:'var(--surface)',border:'1px solid var(--border-light)',borderRadius:'16px',fontSize:'12px' }}>
+          <input ref={ir} value={nn} onChange={e=>setNn(e.target.value)} placeholder="Name" style={{ width:'60px',fontSize:'12px' }} />
+          <input value={nu} onChange={e=>setNu(e.target.value)} placeholder="URL" style={{ width:'100px',fontSize:'12px' }} onKeyDown={e=>{if(e.key==='Enter')add();if(e.key==='Escape')setAdding(false);}} />
+          <button onClick={add} style={{ background:'transparent',border:'none',color:'var(--green)',cursor:'pointer',fontSize:'14px',lineHeight:1,padding:'0 2px' }}>&check;</button>
+          <button onClick={()=>setAdding(false)} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'12px',lineHeight:1,padding:'0 2px' }}>&times;</button>
+        </div>
+      ) : (
+        <button onClick={()=>setAdding(true)} style={{ padding:'5px 10px',background:'transparent',border:'1px dashed var(--border-light)',borderRadius:'16px',cursor:'pointer',color:'var(--text-muted)',fontSize:'12px' }}>+ Add</button>
+      )}
+    </div>
+  );
+}
+
+/* ── Card Detail Modal ─────────────────────────────────────────────────── */
+function CardDetail({ card, onClose, onUpdate, color }) {
+  const [notes, setNotes] = useState(card.notes || '');
+  const [images, setImages] = useState(card.images || []);
+  const fileRef = useRef(null);
+
+  const handleImageAdd = (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(f => {
+      const reader = new FileReader();
+      reader.onload = (ev) => setImages(prev => [...prev, ev.target.result]);
+      reader.readAsDataURL(f);
+    });
+  };
+
+  const save = () => { onUpdate({ ...card, notes, images }); onClose(); };
+  const removeImage = (i) => setImages(prev => prev.filter((_, idx) => idx !== i));
+
+  return (
+    <div style={{ position:'fixed',inset:0,zIndex:100,display:'flex',justifyContent:'center',alignItems:'center' }}>
+      <div onClick={save} style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)' }} />
+      <div className="modal-enter" style={{ position:'relative',zIndex:1,background:'rgba(19,19,22,0.95)',backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',border:'1px solid var(--border)',borderRadius:'12px',width:'580px',maxHeight:'85vh',overflow:'auto',padding:'28px' }}>
+        <button onClick={save} style={{ position:'absolute',top:'14px',right:'14px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'6px',width:'26px',height:'26px',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+
+        {/* Color bar */}
+        <div style={{ width:'40px',height:'4px',borderRadius:'2px',background:color,marginBottom:'20px' }} />
+
+        {/* Title */}
+        <h2 style={{ fontSize:'20px',fontWeight:700,letterSpacing:'-0.02em',lineHeight:1.3,marginBottom:'6px' }}>{card.title}</h2>
+
+        {/* Meta row */}
+        <div style={{ display:'flex',gap:'10px',alignItems:'center',marginBottom:'20px',paddingBottom:'16px',borderBottom:'1px solid var(--border)' }}>
+          {card.value && <span style={{ fontSize:'14px',fontWeight:700,color:'var(--green)' }}>{fmtFull(card.value)}</span>}
+          {card.assignee && <span style={{ fontSize:'12px',color:'var(--text-muted)' }}>{card.assignee}</span>}
+          {card.type && <span style={{ fontSize:'11px',fontWeight:500,padding:'2px 8px',background:( TYPE_COLORS[card.type]||'#777')+'18',color:TYPE_COLORS[card.type]||'#777',borderRadius:'4px' }}>{card.type}</span>}
+          {card.stage && <span style={{ fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em' }}>{card.stage}</span>}
+          {card.platforms && card.platforms.map(p => <span key={p} style={{ fontSize:'10px',fontWeight:500,padding:'2px 7px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'4px',color:'var(--text-secondary)' }}>{p}</span>)}
+        </div>
+
+        {/* Notes */}
+        <div style={{ marginBottom:'20px' }}>
+          <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:'8px' }}>Notes</div>
+          <textarea
+            value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Add notes, context, next steps..."
+            rows={4}
+            style={{ width:'100%',padding:'12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',fontSize:'13px',lineHeight:'1.6',color:'var(--text-secondary)' }}
+          />
+        </div>
+
+        {/* Images */}
+        <div>
+          <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:'8px' }}>Attachments</div>
+          <div style={{ display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'12px' }}>
+            {images.map((img, i) => (
+              <div key={i} style={{ position:'relative',width:'100px',height:'80px',borderRadius:'var(--radius-sm)',overflow:'hidden',border:'1px solid var(--border)' }}>
+                <img src={img} style={{ width:'100%',height:'100%',objectFit:'cover' }} />
+                <button onClick={() => removeImage(i)} style={{ position:'absolute',top:'4px',right:'4px',width:'18px',height:'18px',borderRadius:'50%',background:'rgba(0,0,0,0.7)',border:'none',color:'#fff',fontSize:'10px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center' }}>&times;</button>
+              </div>
+            ))}
+            <button onClick={() => fileRef.current?.click()} style={{
+              width:'100px',height:'80px',borderRadius:'var(--radius-sm)',
+              border:'1px dashed var(--border-light)',background:'transparent',
+              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'4px',
+              cursor:'pointer',color:'var(--text-muted)',fontSize:'11px',
+            }}>
+              <span style={{ fontSize:'18px',lineHeight:1 }}>+</span>
+              Add image
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display:'none' }} onChange={handleImageAdd} />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display:'flex',gap:'8px',paddingTop:'16px',borderTop:'1px solid var(--border)' }}>
+          <button onClick={save} style={{ padding:'8px 20px',background:color,border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Save</button>
+          <button onClick={onClose} style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Draggable Card ────────────────────────────────────────────────────── */
+function DealCard({ deal, profileId, onOpen }) {
+  const color = PROFILE_COLORS[profileId] || '#777';
+  const label = PROFILES.find(p => p.id === profileId)?.label || '';
+  return (
+    <div draggable onDragStart={e => { dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
+      onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
+      onClick={() => onOpen(deal)}
+      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
+          <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:color }} />
+          <span style={{ fontSize:'11px',color:'var(--text-secondary)' }}>{label}</span>
+        </div>
+        <span style={{ fontSize:'13px',fontWeight:600,color:'var(--green)' }}>{fmtFull(deal.value)}</span>
+      </div>
+      <div style={{ fontSize:'13.5px',fontWeight:600,lineHeight:1.4,marginBottom:'6px',letterSpacing:'-0.01em' }}>{deal.title}</div>
+      <div style={{ fontSize:'11.5px',color:'var(--text-muted)' }}>{deal.assignee}</div>
+    </div>
+  );
+}
+
+function ContentCard({ item, onOpen }) {
+  const tc = TYPE_COLORS[item.type] || '#777';
+  return (
+    <div draggable onDragStart={e => { dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
+      onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
+      onClick={() => onOpen(item)}
+      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
+          <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:tc }} />
+          <span style={{ fontSize:'11px',color:'var(--text-secondary)' }}>{item.type}</span>
+        </div>
+        {item.age && <span style={{ fontSize:'10px',fontWeight:600,padding:'2px 7px',background:'#fb923c18',color:'var(--orange)',borderRadius:'4px' }}>{item.age}</span>}
+      </div>
+      <div style={{ fontSize:'13.5px',fontWeight:600,lineHeight:1.4,marginBottom:'8px',letterSpacing:'-0.01em' }}>{item.title}</div>
+      <div style={{ display:'flex',gap:'5px',flexWrap:'wrap' }}>
+        {item.platforms.map(p => <span key={p} style={{ fontSize:'10px',fontWeight:500,padding:'2px 7px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'4px',color:'var(--text-secondary)' }}>{p}</span>)}
+      </div>
+    </div>
+  );
+}
+
+/* ── Drop Column ───────────────────────────────────────────────────────── */
+function DropColumn({ stageKey, label, count, totalValue, children, onDrop }) {
+  const [over, setOver] = useState(false);
+  const empty = !children || (Array.isArray(children) && children.length === 0);
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={e => { e.preventDefault(); setOver(false); if (dragData) onDrop(dragData.id, stageKey); }}
+      className={over ? 'drop-target' : ''}
+      style={{ flex:'1 1 0',minWidth:'200px',padding:'4px',transition:'background 0.15s' }}
+    >
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px',padding:'0 2px' }}>
+        <div style={{ display:'flex',alignItems:'baseline',gap:'8px' }}>
+          <span style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.05em',color:'var(--text-secondary)' }}>{label}</span>
+          <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>{count}</span>
+        </div>
+        {totalValue != null && totalValue > 0 && <span style={{ fontSize:'11px',fontWeight:500,color:'var(--text-muted)' }}>{fmtShort(totalValue)}</span>}
+      </div>
+      <div style={{ display:'flex',flexDirection:'column',gap:'6px',minHeight:'100px' }}>
+        {empty ? <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100px',color:'var(--text-muted)',fontSize:'12px',fontStyle:'italic',opacity:0.6 }}>empty</div> : children}
+      </div>
+    </div>
+  );
+}
+
+/* ── Deals View ────────────────────────────────────────────────────────── */
+function DealsView({ activeProfile, setActiveProfile, deals, setDeals }) {
+  const [openCard, setOpenCard] = useState(null);
+  const [fadeKey, setFadeKey] = useState(0);
+  const profileDeals = deals[activeProfile] || [];
+  const pipelineValue = profileDeals.filter(d => d.stage !== 'lost').reduce((s,d) => s+d.value, 0);
+  const counts = {}; Object.entries(deals).forEach(([pid,d]) => { counts[pid] = d.length; });
+  const color = PROFILE_COLORS[activeProfile];
+  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); };
+
+  const moveDeal = (dealId, newStage) => {
+    setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(d => d.id === dealId ? { ...d, stage: newStage } : d) }));
+  };
+  const updateDeal = (updated) => {
+    setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(d => d.id === updated.id ? updated : d) }));
+  };
+
+  return (
+    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',zIndex:1 }}>
+      <div style={{ padding:'24px 32px 0',borderBottom:'1px solid var(--border)' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'20px' }}>
+          <div>
+            <h1 style={{ fontSize:'15px',fontWeight:600,marginBottom:'18px',letterSpacing:'-0.01em' }}>Deals</h1>
+            <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',color:'var(--text-muted)',textTransform:'uppercase',marginBottom:'5px' }}>PIPELINE VALUE</div>
+            <div style={{ fontSize:'30px',fontWeight:700,letterSpacing:'-0.03em',lineHeight:1 }}>{fmtFull(pipelineValue)}</div>
+          </div>
+          <button style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New Deal</button>
+        </div>
+        <div style={{ paddingBottom:'18px' }}>
+          <ProfileSwitcher active={activeProfile} onSwitch={handleProfileSwitch} counts={counts} />
+        </div>
+      </div>
+      <div key={fadeKey} className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px',display:'flex',gap:'14px' }}>
+        {DEAL_STAGES.map(stage => {
+          const sd = profileDeals.filter(d => d.stage === stage);
+          return (
+            <DropColumn key={stage} stageKey={stage} label={DEAL_LABELS[stage]} count={sd.length} totalValue={sd.reduce((s,d)=>s+d.value,0)} onDrop={moveDeal}>
+              {sd.map(d => <DealCard key={d.id} deal={d} profileId={activeProfile} onOpen={setOpenCard} />)}
+            </DropColumn>
+          );
+        })}
+      </div>
+      {openCard && <CardDetail card={openCard} color={color} onClose={() => setOpenCard(null)} onUpdate={updated => { updateDeal(updated); setOpenCard(null); }} />}
+    </div>
+  );
+}
+
+/* ── Content View ──────────────────────────────────────────────────────── */
+function ContentView({ activeProfile, setActiveProfile, content, setContent }) {
+  const [openCard, setOpenCard] = useState(null);
+  const [fadeKey, setFadeKey] = useState(0);
+  const profileContent = content[activeProfile] || [];
+  const counts = {}; Object.entries(content).forEach(([pid,c]) => { counts[pid] = c.length; });
+  const color = PROFILE_COLORS[activeProfile];
+  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); };
+
+  const moveContent = (itemId, newStage) => {
+    setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(c => c.id === itemId ? { ...c, stage: newStage } : c) }));
+  };
+  const updateContent = (updated) => {
+    setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(c => c.id === updated.id ? updated : c) }));
+  };
+
+  return (
+    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',zIndex:1 }}>
+      <div style={{ padding:'24px 32px 0',borderBottom:'1px solid var(--border)' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'18px' }}>
+          <h1 style={{ fontSize:'15px',fontWeight:600,letterSpacing:'-0.01em' }}>Content</h1>
+          <div style={{ display:'flex',gap:'8px',alignItems:'center' }}>
+            <div style={{ display:'flex',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',overflow:'hidden' }}>
+              <button style={{ padding:'5px 9px',background:'var(--surface)',border:'none',color:'var(--text)',cursor:'pointer',fontSize:'13px' }}>&#9638;</button>
+              <button style={{ padding:'5px 9px',background:'transparent',border:'none',borderLeft:'1px solid var(--border)',color:'var(--text-muted)',cursor:'pointer',fontSize:'13px' }}>&#9776;</button>
+            </div>
+            <button style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New</button>
+          </div>
+        </div>
+        <div style={{ marginBottom:'14px' }}><ProfileSwitcher active={activeProfile} onSwitch={handleProfileSwitch} counts={counts} /></div>
+        <div style={{ marginBottom:'14px' }}><QuickLinks /></div>
+        <div style={{ fontSize:'12px',color:'var(--text-muted)',marginBottom:'18px' }}>Long-form to multi-platform repurposing &middot; check to select &middot; shift+click for range</div>
+      </div>
+      <div key={fadeKey} className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px',display:'flex',gap:'14px' }}>
+        {CONTENT_STAGES.map(stage => {
+          const si = profileContent.filter(c => c.stage === stage);
+          return (
+            <DropColumn key={stage} stageKey={stage} label={CONTENT_LABELS[stage]} count={si.length} onDrop={moveContent}>
+              {si.map(c => <ContentCard key={c.id} item={c} onOpen={setOpenCard} />)}
+            </DropColumn>
+          );
+        })}
+      </div>
+      {openCard && <CardDetail card={openCard} color={color} onClose={() => setOpenCard(null)} onUpdate={updated => { updateContent(updated); setOpenCard(null); }} />}
+    </div>
+  );
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+function Sidebar({ activeView, setActiveView, activeProfile, setActiveProfile }) {
+  return (
+    <div style={{ width:'210px',minWidth:'210px',borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',height:'100vh',background:'var(--bg)',position:'relative',zIndex:2 }}>
+      <div style={{ padding:'18px 18px 14px',borderBottom:'1px solid var(--border)' }}>
+        <div style={{ fontSize:'11px',fontWeight:500,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--text-secondary)' }}>s t u d i o</div>
+      </div>
+      <div style={{ padding:'10px 10px 4px' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 10px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)' }}>
+          <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
+          <input placeholder="Search..." style={{ fontSize:'12px',width:'100%' }} />
+        </div>
+      </div>
+      <div style={{ padding:'14px 10px 0' }}>
+        <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--text-muted)',padding:'0 10px 6px' }}>Views</div>
+        {[{id:'deals',label:'Deals'},{id:'content',label:'Content'}].map(v => (
+          <button key={v.id} onClick={() => setActiveView(v.id)} style={{ display:'flex',alignItems:'center',padding:'7px 10px',width:'100%',background:activeView===v.id?'var(--surface-hover)':'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:activeView===v.id?'var(--text)':'var(--text-secondary)',fontSize:'13px',fontWeight:activeView===v.id?500:400,textAlign:'left' }}>{v.label}</button>
+        ))}
+      </div>
+      <div style={{ padding:'14px 10px 0' }}>
+        <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--text-muted)',padding:'0 10px 6px' }}>Profiles</div>
+        {PROFILES.map(p => { const a = activeProfile===p.id; const c = PROFILE_COLORS[p.id]; return (
+          <button key={p.id} onClick={() => setActiveProfile(p.id)} style={{ display:'flex',alignItems:'center',gap:'9px',padding:'7px 10px',width:'100%',background:a?'var(--surface-hover)':'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:a?'var(--text)':'var(--text-secondary)',fontSize:'13px',textAlign:'left' }}>
+            <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:c }} />{p.label}
+          </button>);
+        })}
+      </div>
+      <div style={{ marginTop:'auto',borderTop:'1px solid var(--border)',padding:'10px' }}>
+        {['Contacts','Calendar','Settings'].map(item => (
+          <button key={item} style={{ display:'flex',alignItems:'center',padding:'6px 10px',width:'100%',background:'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:'var(--text-muted)',fontSize:'12px',textAlign:'left' }}>{item}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── App ───────────────────────────────────────────────────────────────── */
+function App() {
+  const [activeView, setActiveView] = useState('deals');
+  const [activeProfile, setActiveProfile] = useState('marc-randolph');
+  const [deals, setDeals] = useState(initDeals);
+  const [content, setContent] = useState(initContent);
+
+  return (
+    <div style={{ display:'flex',height:'100vh',position:'relative' }}>
+      <div className="grid-bg" />
+      <Sidebar activeView={activeView} setActiveView={setActiveView} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />
+      {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} />}
+      {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

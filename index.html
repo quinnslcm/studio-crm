@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Studio CRM</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root, [data-theme="dark"] {
+      --bg: #09090b; --surface: #131316; --surface-hover: #19191d;
+      --border: #1c1c22; --border-light: #26262e;
+      --text: #f4f4f5; --text-secondary: #a1a1aa; --text-muted: #636370;
+      --green: #10b981; --purple: #8b5cf6; --orange: #f97316;
+      --cyan: #06b6d4; --blue: #3b82f6; --red: #ef4444; --yellow: #eab308;
+      --radius: 8px; --radius-sm: 6px;
+      --modal-bg: rgba(19,19,22,0.95); --dropdown-bg: rgba(21,21,24,0.92);
+      --glow-rgb: 16,185,129; --grid-opacity: 0.7;
+      --drop-bg: rgba(255,255,255,0.02);
+    }
+    [data-theme="light"] {
+      --bg: #f8f8fa; --surface: #ffffff; --surface-hover: #f0f0f3;
+      --border: #e4e4e7; --border-light: #d4d4d8;
+      --text: #18181b; --text-secondary: #52525b; --text-muted: #a1a1aa;
+      --green: #059669; --purple: #7c3aed; --orange: #ea580c;
+      --cyan: #0891b2; --blue: #2563eb; --red: #dc2626; --yellow: #ca8a04;
+      --modal-bg: rgba(255,255,255,0.92); --dropdown-bg: rgba(255,255,255,0.92);
+      --glow-rgb: 5,150,105; --grid-opacity: 0.45;
+      --drop-bg: rgba(0,0,0,0.02);
+    }
+    body { font-family: 'DM Sans', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; overflow: hidden; height: 100vh; }
+    #root { height: 100vh; }
+    ::-webkit-scrollbar { width: 3px; height: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+    input, textarea { font-family: inherit; background: transparent; border: none; color: var(--text); outline: none; resize: none; }
+    input::placeholder, textarea::placeholder { color: var(--text-muted); }
+    button { font-family: inherit; }
+    .grid-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px; opacity: var(--grid-opacity);
+    }
+    .drop-target { outline: 2px dashed var(--border-light); outline-offset: -2px; border-radius: var(--radius); background: var(--drop-bg); }
+    .card-dragging { opacity: 0.4; }
+
+    /* ── Liquid glass glow animations ──────────────────────────── */
+    @keyframes glowPulse {
+      0% { box-shadow: 0 0 0px rgba(var(--glow-rgb), 0); }
+      50% { box-shadow: 0 0 20px rgba(var(--glow-rgb), 0.15), 0 0 40px rgba(var(--glow-rgb), 0.05); }
+      100% { box-shadow: 0 0 0px rgba(var(--glow-rgb), 0); }
+    }
+    @keyframes glowFadeIn {
+      0% { opacity: 0; transform: translateY(-4px) scale(0.97); filter: blur(4px); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+    }
+    @keyframes modalGlow {
+      0% { opacity: 0; transform: scale(0.96); box-shadow: 0 0 0 rgba(var(--glow-rgb),0); }
+      60% { box-shadow: 0 0 30px rgba(var(--glow-rgb),0.12), 0 0 60px rgba(var(--glow-rgb),0.04); }
+      100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 rgba(var(--glow-rgb),0); }
+    }
+    @keyframes contentFade {
+      0% { opacity: 0; transform: translateY(6px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .glow-pulse { animation: glowPulse 0.6s ease-out; }
+    .dropdown-enter { animation: glowFadeIn 0.2s ease-out; }
+    .modal-enter { animation: modalGlow 0.35s ease-out; }
+    .content-fade { animation: contentFade 0.25s ease-out; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+const fmtFull = n => '$' + n.toLocaleString();
+const fmtShort = n => { if (n >= 1e6) return '$'+(n/1e6).toFixed(1)+'M'; if (n >= 1e3) return '$'+Math.round(n/1e3)+'K'; return '$'+n; };
+
+/* ── localStorage helper ───────────────────────────────────────────────── */
+function usePersistedState(key, init) {
+  const [state, setState] = useState(() => {
+    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : (typeof init === 'function' ? init() : init); }
+    catch { return typeof init === 'function' ? init() : init; }
+  });
+  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(state)); } catch {} }, [key, state]);
+  return [state, setState];
+}
+
+const PROFILE_COLORS = { culture:'#22d3ee','marc-randolph':'#a78bfa', quinn:'#fb923c', lightwork:'#34d399' };
+const PROFILES = [{ id:'culture',label:'@culture' },{ id:'marc-randolph',label:'Marc Randolph' },{ id:'quinn',label:'Quinn' },{ id:'lightwork',label:'Lightwork' }];
+
+const initDeals = () => ({
+  culture: [
+    { id:'d1',title:'Ramp // @culture',value:75000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d2',title:'Nike // Culture Partnership',value:120000,stage:'negotiating',assignee:'Kendall',notes:'',images:[] },
+    { id:'d3',title:'Hennessy // Culture Events',value:50000,stage:'outreach',assignee:'Kendall',notes:'',images:[] },
+  ],
+  'marc-randolph': [
+    { id:'d4',title:'Ramp // Marc Randolph',value:200000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d5',title:'Mercury // Marc Randolph',value:300000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d6',title:'Netflix // Documentary Deal',value:120000,stage:'lead',assignee:'Kendall',notes:'Initial conversations with Netflix team. Potential 6-part series.',images:[] },
+    { id:'d7',title:'SXSW // Keynote Package',value:45000,stage:'outreach',assignee:'Kendall',notes:'',images:[] },
+    { id:'d8',title:'HarperCollins // Book Deal',value:85000,stage:'negotiating',assignee:'Kendall',notes:'Advance discussion in progress.',images:[] },
+    { id:'d9',title:'Spotify // Podcast S4',value:75000,stage:'closed',assignee:'Kendall',notes:'Season 4 greenlit. 10 episodes.',images:[] },
+  ],
+  quinn: [{ id:'d10',title:'Ramp // Quinn Projects',value:50000,stage:'lead',assignee:'Kendall',notes:'',images:[] }],
+  lightwork: [
+    { id:'d11',title:'Ramp // Lightwork Fractional New Media',value:100000,stage:'lead',assignee:'Kendall',notes:'',images:[] },
+    { id:'d12',title:'Adidas // Creative Package',value:150000,stage:'closed',assignee:'Kendall',notes:'Deliverables shipped Q1.',images:[] },
+    { id:'d13',title:'Spotify // Retainer',value:180000,stage:'negotiating',assignee:'Kendall',notes:'',images:[] },
+  ],
+});
+
+const initContent = () => ({
+  culture: [
+    { id:'c1',title:'Underground Sounds Ep 1',type:'Long-form',stage:'source',platforms:['YouTube','Newsletter'],age:null,notes:'',images:[] },
+    { id:'c2',title:'Community Spotlight — March',type:'Carousel',stage:'platform-ready',platforms:['Instagram','LinkedIn'],age:'1d',notes:'',images:[] },
+    { id:'c3',title:'Event Recap — NYC Mixer',type:'Short-form',stage:'posted',platforms:['TikTok','Instagram'],age:'5d',notes:'',images:[] },
+  ],
+  'marc-randolph': [
+    { id:'c4',title:'Ep 47 — Netflix founding story',type:'Long-form',stage:'source',platforms:['YouTube','Newsletter'],age:null,notes:'Raw footage captured. Editing next week.',images:[] },
+    { id:'c5',title:'Ep 46 — "Quit your job" carousel',type:'Carousel',stage:'platform-ready',platforms:['Instagram','LinkedIn'],age:'2d',notes:'',images:[] },
+    { id:'c6',title:'"Start before ready" thread',type:'Thread',stage:'tweets',platforms:['X'],age:'1d',notes:'',images:[] },
+    { id:'c7',title:'Ep 45 — Advice for founders',type:'Long-form',stage:'posted',platforms:['YouTube','Spotify'],age:'7d',notes:'',images:[] },
+  ],
+  quinn: [{ id:'c8',title:'Creative Direction Reel',type:'Short-form',stage:'source',platforms:['Instagram','TikTok'],age:null,notes:'',images:[] }],
+  lightwork: [{ id:'c9',title:'Studio CRM — Product Demo',type:'Long-form',stage:'source',platforms:['YouTube','X'],age:null,notes:'',images:[] }],
+});
+
+const DEAL_STAGES = ['lead','outreach','negotiating','closed','lost'];
+const DEAL_LABELS = { lead:'LEAD',outreach:'OUTREACH',negotiating:'NEGOTIATING',closed:'CLOSED',lost:'LOST' };
+const CONTENT_STAGES = ['source','tweets','platform-ready','posted'];
+const CONTENT_LABELS = { source:'SOURCE',tweets:'TWEETS','platform-ready':'PLATFORM READY',posted:'POSTED' };
+const TYPE_COLORS = { 'Long-form':'#a78bfa','Carousel':'#a78bfa','Short-form':'#60a5fa','Thread':'#fb923c' };
+
+/* ── Drag context ──────────────────────────────────────────────────────── */
+let dragData = null;
+
+/* ── Profile Switcher ──────────────────────────────────────────────────── */
+function ProfileSwitcher({ active, onSwitch, counts }) {
+  const [open, setOpen] = useState(false);
+  const [glowing, setGlowing] = useState(false);
+  const ref = useRef(null);
+  const p = PROFILES.find(x => x.id === active);
+  const color = PROFILE_COLORS[active];
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const id = setTimeout(() => document.addEventListener('click', h), 0);
+    return () => { clearTimeout(id); document.removeEventListener('click', h); };
+  }, [open]);
+  const handleSwitch = (id) => { onSwitch(id); setOpen(false); setGlowing(true); setTimeout(() => setGlowing(false), 600); };
+  return (
+    <div ref={ref} style={{ position:'relative', display:'inline-flex' }}>
+      <button className={glowing ? 'glow-pulse' : ''} onClick={() => setOpen(!open)} style={{ display:'flex',alignItems:'center',gap:'8px',padding:'6px 14px 6px 10px',background:color+'18',border:`1px solid ${color}35`,borderRadius:'20px',cursor:'pointer',color:'var(--text)',fontSize:'13px',fontWeight:500,transition:'all 0.3s ease, box-shadow 0.3s ease' }}>
+        <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:color,transition:'background 0.3s ease' }} />
+        {p?.label}
+        <span style={{ fontSize:'11px',opacity:0.6 }}>{counts[active]||0}</span>
+        <span style={{ fontSize:'10px',marginLeft:'2px',opacity:0.5,transition:'transform 0.2s ease',transform:open?'rotate(180deg)':'rotate(0)' }}>{'\u25BC'}</span>
+      </button>
+      {open && <div className="dropdown-enter" style={{ position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:50,background:'var(--dropdown-bg)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',border:'1px solid var(--border-light)',borderRadius:'var(--radius)',padding:'4px',minWidth:'200px',boxShadow:'0 12px 40px rgba(0,0,0,0.15), 0 0 20px rgba(var(--glow-rgb),0.06)' }}>
+        {PROFILES.map(pr => { const c = PROFILE_COLORS[pr.id]; const a = pr.id===active; return (
+          <button key={pr.id} onClick={() => handleSwitch(pr.id)} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'9px 12px',width:'100%',background:a?c+'15':'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:a?'var(--text)':'var(--text-secondary)',fontSize:'13px',textAlign:'left' }}
+            onMouseEnter={e => { if(!a) e.currentTarget.style.background='var(--surface-hover)'; }}
+            onMouseLeave={e => { if(!a) e.currentTarget.style.background='transparent'; }}>
+            <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:c }} />
+            <span style={{ flex:1 }}>{pr.label}</span>
+            <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>{counts[pr.id]||0}</span>
+          </button>);
+        })}
+      </div>}
+    </div>
+  );
+}
+
+/* ── Quick Links ───────────────────────────────────────────────────────── */
+function QuickLinks() {
+  const [links, setLinks] = useState([
+    { id:'l1',name:'Figma',icon:'F',color:'#a78bfa',url:'https://figma.com',connected:true },
+    { id:'l2',name:'Google Drive',icon:'G',color:'#fbbf24',url:'https://drive.google.com',connected:true },
+    { id:'l3',name:'YouTube Studio',icon:'\u25B6',color:'#f87171',url:'https://studio.youtube.com',connected:true },
+  ]);
+  const [adding, setAdding] = useState(false);
+  const [nn, setNn] = useState('');
+  const [nu, setNu] = useState('');
+  const ir = useRef(null);
+  useEffect(() => { if (adding && ir.current) ir.current.focus(); }, [adding]);
+  const add = () => { if (!nn.trim()||!nu.trim()) return; const cs=['#a78bfa','#fbbf24','#34d399','#60a5fa','#fb923c','#f87171']; setLinks([...links,{id:'l'+Date.now(),name:nn.trim(),icon:nn.trim()[0].toUpperCase(),color:cs[links.length%cs.length],url:nu.trim().startsWith('http')?nu.trim():'https://'+nu.trim(),connected:true}]); setNn(''); setNu(''); setAdding(false); };
+  const rm = id => setLinks(links.filter(l=>l.id!==id));
+  return (
+    <div style={{ display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap' }}>
+      {links.map(l => (
+        <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex',alignItems:'center',gap:'7px',padding:'5px 10px',textDecoration:'none',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'16px',fontSize:'12px',color:'var(--text-secondary)',cursor:'pointer' }}
+          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+          <span style={{ width:'16px',height:'16px',borderRadius:'3px',display:'flex',alignItems:'center',justifyContent:'center',background:l.color+'20',color:l.color,fontSize:'9px',fontWeight:700 }}>{l.icon}</span>
+          {l.name}
+          <span style={{ width:'5px',height:'5px',borderRadius:'50%',background:l.connected?'var(--green)':'var(--text-muted)' }} />
+          <span onClick={e=>{e.preventDefault();e.stopPropagation();rm(l.id);}} style={{ fontSize:'11px',color:'var(--text-muted)',cursor:'pointer',marginLeft:'2px',lineHeight:1 }}>&times;</span>
+        </a>
+      ))}
+      {adding ? (
+        <div style={{ display:'inline-flex',alignItems:'center',gap:'4px',padding:'4px 8px',background:'var(--surface)',border:'1px solid var(--border-light)',borderRadius:'16px',fontSize:'12px' }}>
+          <input ref={ir} value={nn} onChange={e=>setNn(e.target.value)} placeholder="Name" style={{ width:'60px',fontSize:'12px' }} />
+          <input value={nu} onChange={e=>setNu(e.target.value)} placeholder="URL" style={{ width:'100px',fontSize:'12px' }} onKeyDown={e=>{if(e.key==='Enter')add();if(e.key==='Escape')setAdding(false);}} />
+          <button onClick={add} style={{ background:'transparent',border:'none',color:'var(--green)',cursor:'pointer',fontSize:'14px',lineHeight:1,padding:'0 2px' }}>&check;</button>
+          <button onClick={()=>setAdding(false)} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'12px',lineHeight:1,padding:'0 2px' }}>&times;</button>
+        </div>
+      ) : (
+        <button onClick={()=>setAdding(true)} style={{ padding:'5px 10px',background:'transparent',border:'1px dashed var(--border-light)',borderRadius:'16px',cursor:'pointer',color:'var(--text-muted)',fontSize:'12px' }}>+ Add</button>
+      )}
+    </div>
+  );
+}
+
+/* ── Card Detail Modal ─────────────────────────────────────────────────── */
+function CardDetail({ card, onClose, onUpdate, color }) {
+  const [notes, setNotes] = useState(card.notes || '');
+  const [images, setImages] = useState(card.images || []);
+  const [dueDate, setDueDate] = useState(card.dueDate || '');
+  const fileRef = useRef(null);
+
+  const handleImageAdd = (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(f => {
+      const reader = new FileReader();
+      reader.onload = (ev) => setImages(prev => [...prev, ev.target.result]);
+      reader.readAsDataURL(f);
+    });
+  };
+
+  const save = () => { onUpdate({ ...card, notes, images, dueDate }); onClose(); };
+  const removeImage = (i) => setImages(prev => prev.filter((_, idx) => idx !== i));
+
+  return (
+    <div style={{ position:'fixed',inset:0,zIndex:100,display:'flex',justifyContent:'center',alignItems:'center' }}>
+      <div onClick={save} style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)' }} />
+      <div className="modal-enter" style={{ position:'relative',zIndex:1,background:'var(--modal-bg)',backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',border:'1px solid var(--border)',borderRadius:'12px',width:'580px',maxHeight:'85vh',overflow:'auto',padding:'28px' }}>
+        <button onClick={save} style={{ position:'absolute',top:'14px',right:'14px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'6px',width:'26px',height:'26px',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+
+        {/* Color bar */}
+        <div style={{ width:'40px',height:'4px',borderRadius:'2px',background:color,marginBottom:'20px' }} />
+
+        {/* Title */}
+        <h2 style={{ fontSize:'20px',fontWeight:700,letterSpacing:'-0.02em',lineHeight:1.3,marginBottom:'6px' }}>{card.title}</h2>
+
+        {/* Meta row */}
+        <div style={{ display:'flex',gap:'10px',alignItems:'center',marginBottom:'20px',paddingBottom:'16px',borderBottom:'1px solid var(--border)' }}>
+          {card.value && <span style={{ fontSize:'14px',fontWeight:700,color:'var(--green)' }}>{fmtFull(card.value)}</span>}
+          {card.assignee && <span style={{ fontSize:'12px',color:'var(--text-muted)' }}>{card.assignee}</span>}
+          {card.type && <span style={{ fontSize:'11px',fontWeight:500,padding:'2px 8px',background:( TYPE_COLORS[card.type]||'#777')+'18',color:TYPE_COLORS[card.type]||'#777',borderRadius:'4px' }}>{card.type}</span>}
+          {card.stage && <span style={{ fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em' }}>{card.stage}</span>}
+          {card.platforms && card.platforms.map(p => <span key={p} style={{ fontSize:'10px',fontWeight:500,padding:'2px 7px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'4px',color:'var(--text-secondary)' }}>{p}</span>)}
+        </div>
+
+        {/* Due Date */}
+        <div style={{ marginBottom:'20px' }}>
+          <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:'8px' }}>Due Date</div>
+          <div style={{ display:'flex',alignItems:'center',gap:'10px' }}>
+            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+              style={{ padding:'8px 12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'13px',color:'var(--text-secondary)',colorScheme:'dark' }} />
+            {dueDate && <button onClick={() => setDueDate('')} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'12px' }}>Clear</button>}
+            {dueDate && <span style={{ fontSize:'11px',color:'var(--green)' }}>Shows on calendar</span>}
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div style={{ marginBottom:'20px' }}>
+          <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:'8px' }}>Notes</div>
+          <textarea
+            value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Add notes, context, next steps..."
+            rows={4}
+            style={{ width:'100%',padding:'12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',fontSize:'13px',lineHeight:'1.6',color:'var(--text-secondary)' }}
+          />
+        </div>
+
+        {/* Images */}
+        <div>
+          <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:'8px' }}>Attachments</div>
+          <div style={{ display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'12px' }}>
+            {images.map((img, i) => (
+              <div key={i} style={{ position:'relative',width:'100px',height:'80px',borderRadius:'var(--radius-sm)',overflow:'hidden',border:'1px solid var(--border)' }}>
+                <img src={img} style={{ width:'100%',height:'100%',objectFit:'cover' }} />
+                <button onClick={() => removeImage(i)} style={{ position:'absolute',top:'4px',right:'4px',width:'18px',height:'18px',borderRadius:'50%',background:'rgba(0,0,0,0.7)',border:'none',color:'#fff',fontSize:'10px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center' }}>&times;</button>
+              </div>
+            ))}
+            <button onClick={() => fileRef.current?.click()} style={{
+              width:'100px',height:'80px',borderRadius:'var(--radius-sm)',
+              border:'1px dashed var(--border-light)',background:'transparent',
+              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'4px',
+              cursor:'pointer',color:'var(--text-muted)',fontSize:'11px',
+            }}>
+              <span style={{ fontSize:'18px',lineHeight:1 }}>+</span>
+              Add image
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display:'none' }} onChange={handleImageAdd} />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display:'flex',gap:'8px',paddingTop:'16px',borderTop:'1px solid var(--border)' }}>
+          <button onClick={save} style={{ padding:'8px 20px',background:color,border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Save</button>
+          <button onClick={onClose} style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Draggable Card ────────────────────────────────────────────────────── */
+function DealCard({ deal, profileId, onOpen }) {
+  const color = PROFILE_COLORS[profileId] || '#777';
+  const label = PROFILES.find(p => p.id === profileId)?.label || '';
+  return (
+    <div draggable onDragStart={e => { dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
+      onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
+      onClick={() => onOpen(deal)}
+      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
+          <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:color }} />
+          <span style={{ fontSize:'11px',color:'var(--text-secondary)' }}>{label}</span>
+        </div>
+        <span style={{ fontSize:'13px',fontWeight:600,color:'var(--green)' }}>{fmtFull(deal.value)}</span>
+      </div>
+      <div style={{ fontSize:'13.5px',fontWeight:600,lineHeight:1.4,marginBottom:'6px',letterSpacing:'-0.01em' }}>{deal.title}</div>
+      <div style={{ fontSize:'11.5px',color:'var(--text-muted)' }}>{deal.assignee}</div>
+    </div>
+  );
+}
+
+function ContentCard({ item, onOpen }) {
+  const tc = TYPE_COLORS[item.type] || '#777';
+  return (
+    <div draggable onDragStart={e => { dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
+      onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
+      onClick={() => onOpen(item)}
+      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+      <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
+          <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:tc }} />
+          <span style={{ fontSize:'11px',color:'var(--text-secondary)' }}>{item.type}</span>
+        </div>
+        {item.age && <span style={{ fontSize:'10px',fontWeight:600,padding:'2px 7px',background:'#fb923c18',color:'var(--orange)',borderRadius:'4px' }}>{item.age}</span>}
+      </div>
+      <div style={{ fontSize:'13.5px',fontWeight:600,lineHeight:1.4,marginBottom:'8px',letterSpacing:'-0.01em' }}>{item.title}</div>
+      <div style={{ display:'flex',gap:'5px',flexWrap:'wrap' }}>
+        {item.platforms.map(p => <span key={p} style={{ fontSize:'10px',fontWeight:500,padding:'2px 7px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'4px',color:'var(--text-secondary)' }}>{p}</span>)}
+      </div>
+    </div>
+  );
+}
+
+/* ── Drop Column ───────────────────────────────────────────────────────── */
+function DropColumn({ stageKey, label, count, totalValue, children, onDrop }) {
+  const [over, setOver] = useState(false);
+  const empty = !children || (Array.isArray(children) && children.length === 0);
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={e => { e.preventDefault(); setOver(false); if (dragData) onDrop(dragData.id, stageKey); }}
+      className={over ? 'drop-target' : ''}
+      style={{ flex:'1 1 0',minWidth:'200px',padding:'4px',transition:'background 0.15s' }}
+    >
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px',padding:'0 2px' }}>
+        <div style={{ display:'flex',alignItems:'baseline',gap:'8px' }}>
+          <span style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.05em',color:'var(--text-secondary)' }}>{label}</span>
+          <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>{count}</span>
+        </div>
+        {totalValue != null && totalValue > 0 && <span style={{ fontSize:'11px',fontWeight:500,color:'var(--text-muted)' }}>{fmtShort(totalValue)}</span>}
+      </div>
+      <div style={{ display:'flex',flexDirection:'column',gap:'6px',minHeight:'100px' }}>
+        {empty ? <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100px',color:'var(--text-muted)',fontSize:'12px',fontStyle:'italic',opacity:0.6 }}>empty</div> : children}
+      </div>
+    </div>
+  );
+}
+
+/* ── Add Deal / Content Modal ──────────────────────────────────────────── */
+function AddDealModal({ onClose, onSave, profileLabel }) {
+  const [title, setTitle] = useState('');
+  const [value, setValue] = useState('');
+  const [assignee, setAssignee] = useState('Kendall');
+  const fs = { width:'100%',padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'13px',color:'var(--text)',marginBottom:'10px' };
+  const save = () => { if (!title.trim()) return; onSave({ id:'d'+Date.now(),title:title.trim(),value:parseInt(value)||0,stage:'lead',assignee:assignee.trim(),notes:'',images:[],dueDate:'' }); onClose(); };
+  return (
+    <div style={{ position:'fixed',inset:0,zIndex:100,display:'flex',justifyContent:'center',alignItems:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)' }} />
+      <div className="modal-enter" style={{ position:'relative',zIndex:1,background:'var(--modal-bg)',backdropFilter:'blur(20px)',border:'1px solid var(--border)',borderRadius:'12px',width:'440px',padding:'28px' }}>
+        <button onClick={onClose} style={{ position:'absolute',top:'14px',right:'14px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'6px',width:'26px',height:'26px',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+        <h2 style={{ fontSize:'16px',fontWeight:600,marginBottom:'4px' }}>New Deal</h2>
+        <div style={{ fontSize:'12px',color:'var(--text-muted)',marginBottom:'20px' }}>Adding to {profileLabel}</div>
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Deal title (e.g. Ramp // Client)" style={fs} autoFocus />
+        <input value={value} onChange={e=>setValue(e.target.value.replace(/\D/g,''))} placeholder="Value ($)" style={fs} />
+        <input value={assignee} onChange={e=>setAssignee(e.target.value)} placeholder="Assignee" style={fs} />
+        <div style={{ display:'flex',gap:'8px',marginTop:'6px' }}>
+          <button onClick={save} style={{ padding:'8px 20px',background:'var(--green)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Create Deal</button>
+          <button onClick={onClose} style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddContentModal({ onClose, onSave, profileLabel }) {
+  const [title, setTitle] = useState('');
+  const [type, setType] = useState('Long-form');
+  const [platforms, setPlatforms] = useState('');
+  const fs = { width:'100%',padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'13px',color:'var(--text)',marginBottom:'10px' };
+  const save = () => { if (!title.trim()) return; onSave({ id:'c'+Date.now(),title:title.trim(),type,stage:'source',platforms:platforms.split(',').map(s=>s.trim()).filter(Boolean),age:null,notes:'',images:[],dueDate:'' }); onClose(); };
+  return (
+    <div style={{ position:'fixed',inset:0,zIndex:100,display:'flex',justifyContent:'center',alignItems:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)' }} />
+      <div className="modal-enter" style={{ position:'relative',zIndex:1,background:'var(--modal-bg)',backdropFilter:'blur(20px)',border:'1px solid var(--border)',borderRadius:'12px',width:'440px',padding:'28px' }}>
+        <button onClick={onClose} style={{ position:'absolute',top:'14px',right:'14px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'6px',width:'26px',height:'26px',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+        <h2 style={{ fontSize:'16px',fontWeight:600,marginBottom:'4px' }}>New Content</h2>
+        <div style={{ fontSize:'12px',color:'var(--text-muted)',marginBottom:'20px' }}>Adding to {profileLabel}</div>
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Content title" style={fs} autoFocus />
+        <div style={{ display:'flex',gap:'6px',marginBottom:'10px' }}>
+          {['Long-form','Carousel','Short-form','Thread'].map(t => (
+            <button key={t} onClick={()=>setType(t)} style={{
+              padding:'5px 12px',background:type===t?(TYPE_COLORS[t]||'#777')+'20':'transparent',
+              border:type===t?`1px solid ${TYPE_COLORS[t]||'#777'}40`:'1px solid var(--border)',
+              borderRadius:'16px',cursor:'pointer',color:type===t?'var(--text)':'var(--text-muted)',fontSize:'12px',
+            }}>{t}</button>
+          ))}
+        </div>
+        <input value={platforms} onChange={e=>setPlatforms(e.target.value)} placeholder="Platforms (comma separated: YouTube, Instagram)" style={fs} />
+        <div style={{ display:'flex',gap:'8px',marginTop:'6px' }}>
+          <button onClick={save} style={{ padding:'8px 20px',background:'var(--green)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Create</button>
+          <button onClick={onClose} style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Deals View ────────────────────────────────────────────────────────── */
+function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCard }) {
+  const [fadeKey, setFadeKey] = useState(0);
+  const [viewMode, setViewMode] = useState('board');
+  const [showAdd, setShowAdd] = useState(false);
+  const profileDeals = deals[activeProfile] || [];
+  const pipelineValue = profileDeals.filter(d => d.stage !== 'lost').reduce((s,d) => s+d.value, 0);
+  const counts = {}; Object.entries(deals).forEach(([pid,d]) => { counts[pid] = d.length; });
+  const profileLabel = PROFILES.find(p=>p.id===activeProfile)?.label||'';
+  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); };
+  const moveDeal = (dealId, newStage) => {
+    setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(d => d.id === dealId ? { ...d, stage: newStage } : d) }));
+  };
+  const addDeal = (deal) => { setDeals(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), deal] })); };
+
+  return (
+    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden' }}>
+      <div style={{ padding:'24px 32px 0',borderBottom:'1px solid var(--border)' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'20px' }}>
+          <div>
+            <h1 style={{ fontSize:'15px',fontWeight:600,marginBottom:'18px',letterSpacing:'-0.01em' }}>Deals</h1>
+            <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',color:'var(--text-muted)',textTransform:'uppercase',marginBottom:'5px' }}>PIPELINE VALUE</div>
+            <div style={{ fontSize:'30px',fontWeight:700,letterSpacing:'-0.03em',lineHeight:1 }}>{fmtFull(pipelineValue)}</div>
+          </div>
+          <div style={{ display:'flex',gap:'8px',alignItems:'center' }}>
+            <div style={{ display:'flex',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',overflow:'hidden' }}>
+              <button onClick={()=>setViewMode('board')} style={{ padding:'5px 9px',background:viewMode==='board'?'var(--surface)':'transparent',border:'none',color:viewMode==='board'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'13px' }}>&#9638;</button>
+              <button onClick={()=>setViewMode('list')} style={{ padding:'5px 9px',background:viewMode==='list'?'var(--surface)':'transparent',border:'none',borderLeft:'1px solid var(--border)',color:viewMode==='list'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'13px' }}>&#9776;</button>
+            </div>
+            <button onClick={()=>setShowAdd(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New Deal</button>
+          </div>
+        </div>
+        <div style={{ paddingBottom:'18px' }}>
+          <ProfileSwitcher active={activeProfile} onSwitch={handleProfileSwitch} counts={counts} />
+        </div>
+      </div>
+      {viewMode === 'board' ? (
+        <div key={fadeKey} className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px',display:'flex',gap:'14px' }}>
+          {DEAL_STAGES.map(stage => {
+            const sd = profileDeals.filter(d => d.stage === stage);
+            return (
+              <DropColumn key={stage} stageKey={stage} label={DEAL_LABELS[stage]} count={sd.length} totalValue={sd.reduce((s,d)=>s+d.value,0)} onDrop={moveDeal}>
+                {sd.map(d => <DealCard key={d.id} deal={d} profileId={activeProfile} onOpen={c => onOpenCard(c, 'deal')} />)}
+              </DropColumn>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px' }}>
+          <div style={{ display:'flex',gap:'12px',padding:'0 14px 10px',fontSize:'10px',fontWeight:600,letterSpacing:'0.04em',color:'var(--text-muted)',textTransform:'uppercase' }}>
+            <span style={{ width:'7px' }} /><span style={{ flex:1 }}>Deal</span><span style={{ width:'90px',textAlign:'center' }}>Stage</span><span style={{ width:'80px',textAlign:'right' }}>Value</span><span style={{ width:'60px',textAlign:'right' }}>Owner</span>
+          </div>
+          <div style={{ display:'flex',flexDirection:'column',gap:'4px' }}>
+            {profileDeals.map(d => <DealRow key={d.id} deal={d} profileId={activeProfile} onOpen={c => onOpenCard(c, 'deal')} />)}
+          </div>
+        </div>
+      )}
+      {showAdd && <AddDealModal onClose={()=>setShowAdd(false)} onSave={addDeal} profileLabel={profileLabel} />}
+    </div>
+  );
+}
+
+/* ── Content View ──────────────────────────────────────────────────────── */
+function ContentView({ activeProfile, setActiveProfile, content, setContent, onOpenCard }) {
+  const [fadeKey, setFadeKey] = useState(0);
+  const [viewMode, setViewMode] = useState('board');
+  const [showAdd, setShowAdd] = useState(false);
+  const profileContent = content[activeProfile] || [];
+  const counts = {}; Object.entries(content).forEach(([pid,c]) => { counts[pid] = c.length; });
+  const profileLabel = PROFILES.find(p=>p.id===activeProfile)?.label||'';
+  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); };
+  const moveContent = (itemId, newStage) => {
+    setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(c => c.id === itemId ? { ...c, stage: newStage } : c) }));
+  };
+  const addContent = (item) => { setContent(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), item] })); };
+
+  return (
+    <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden' }}>
+      <div style={{ padding:'24px 32px 0',borderBottom:'1px solid var(--border)' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'18px' }}>
+          <h1 style={{ fontSize:'15px',fontWeight:600,letterSpacing:'-0.01em' }}>Content</h1>
+          <div style={{ display:'flex',gap:'8px',alignItems:'center' }}>
+            <div style={{ display:'flex',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',overflow:'hidden' }}>
+              <button onClick={()=>setViewMode('board')} style={{ padding:'5px 9px',background:viewMode==='board'?'var(--surface)':'transparent',border:'none',color:viewMode==='board'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'13px' }}>&#9638;</button>
+              <button onClick={()=>setViewMode('list')} style={{ padding:'5px 9px',background:viewMode==='list'?'var(--surface)':'transparent',border:'none',borderLeft:'1px solid var(--border)',color:viewMode==='list'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'13px' }}>&#9776;</button>
+            </div>
+            <button onClick={()=>setShowAdd(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New</button>
+          </div>
+        </div>
+        <div style={{ marginBottom:'14px' }}><ProfileSwitcher active={activeProfile} onSwitch={handleProfileSwitch} counts={counts} /></div>
+        <div style={{ marginBottom:'14px' }}><QuickLinks /></div>
+        <div style={{ fontSize:'12px',color:'var(--text-muted)',marginBottom:'18px' }}>Long-form to multi-platform repurposing &middot; check to select &middot; shift+click for range</div>
+      </div>
+      {viewMode === 'board' ? (
+        <div key={fadeKey} className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px',display:'flex',gap:'14px' }}>
+          {CONTENT_STAGES.map(stage => {
+            const si = profileContent.filter(c => c.stage === stage);
+            return (
+              <DropColumn key={stage} stageKey={stage} label={CONTENT_LABELS[stage]} count={si.length} onDrop={moveContent}>
+                {si.map(c => <ContentCard key={c.id} item={c} onOpen={card => onOpenCard(card, 'content')} />)}
+              </DropColumn>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px' }}>
+          <div style={{ display:'flex',gap:'12px',padding:'0 14px 10px',fontSize:'10px',fontWeight:600,letterSpacing:'0.04em',color:'var(--text-muted)',textTransform:'uppercase' }}>
+            <span style={{ width:'7px' }} /><span style={{ flex:1 }}>Title</span><span style={{ width:'100px',textAlign:'center' }}>Stage</span><span style={{ width:'70px',textAlign:'center' }}>Type</span><span style={{ width:'120px',textAlign:'right' }}>Platforms</span>
+          </div>
+          <div style={{ display:'flex',flexDirection:'column',gap:'4px' }}>
+            {profileContent.map(c => <ContentRow key={c.id} item={c} onOpen={card => onOpenCard(card, 'content')} />)}
+          </div>
+        </div>
+      )}
+      {showAdd && <AddContentModal onClose={()=>setShowAdd(false)} onSave={addContent} profileLabel={profileLabel} />}
+    </div>
+  );
+}
+
+/* ── List View Row ─────────────────────────────────────────────────────── */
+function DealRow({ deal, profileId, onOpen }) {
+  const color = PROFILE_COLORS[profileId] || '#777';
+  const label = PROFILES.find(p => p.id === profileId)?.label || '';
+  return (
+    <div onClick={() => onOpen(deal)} style={{ display:'flex',alignItems:'center',gap:'12px',padding:'10px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',cursor:'pointer',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+      <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:color,flexShrink:0 }} />
+      <span style={{ flex:1,fontSize:'13px',fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{deal.title}</span>
+      <span style={{ fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',width:'90px',textAlign:'center' }}>{deal.stage}</span>
+      <span style={{ fontSize:'12px',fontWeight:600,color:'var(--green)',width:'80px',textAlign:'right' }}>{fmtFull(deal.value)}</span>
+      <span style={{ fontSize:'11px',color:'var(--text-muted)',width:'60px',textAlign:'right' }}>{deal.assignee}</span>
+    </div>
+  );
+}
+function ContentRow({ item, onOpen }) {
+  const tc = TYPE_COLORS[item.type] || '#777';
+  return (
+    <div onClick={() => onOpen(item)} style={{ display:'flex',alignItems:'center',gap:'12px',padding:'10px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',cursor:'pointer',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+      <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:tc,flexShrink:0 }} />
+      <span style={{ flex:1,fontSize:'13px',fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{item.title}</span>
+      <span style={{ fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',width:'100px',textAlign:'center' }}>{item.stage}</span>
+      <span style={{ fontSize:'10px',padding:'2px 7px',background:tc+'18',color:tc,borderRadius:'4px' }}>{item.type}</span>
+      <div style={{ display:'flex',gap:'4px',width:'120px',justifyContent:'flex-end' }}>
+        {item.platforms.slice(0,2).map(p => <span key={p} style={{ fontSize:'10px',padding:'2px 6px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'3px',color:'var(--text-muted)' }}>{p}</span>)}
+      </div>
+    </div>
+  );
+}
+
+/* ── Contacts View ─────────────────────────────────────────────────────── */
+const initContacts = () => [
+  { id:'ct1',name:'Kendall',role:'Project Lead',email:'kendall@lightwork.social',phone:'(555) 123-4567',profiles:['lightwork','culture','marc-randolph','quinn'],notes:'' },
+  { id:'ct2',name:'Marc Randolph',role:'Partner / Creator',email:'marc@marcrandolph.com',phone:'(555) 234-5678',profiles:['marc-randolph'],notes:'Netflix co-founder. Primary revenue driver.' },
+  { id:'ct3',name:'Sarah Chen',role:'Brand Manager — Nike',email:'sarah.c@nike.com',phone:'(555) 345-6789',profiles:['culture'],notes:'Main contact for culture partnership.' },
+  { id:'ct4',name:'Quinn Davis',role:'Creative Director',email:'quinn@studio.co',phone:'(555) 456-7890',profiles:['quinn','lightwork'],notes:'' },
+  { id:'ct5',name:'Ava Williams',role:'Content Strategist',email:'ava@lightwork.social',phone:'(555) 567-8901',profiles:['lightwork','marc-randolph'],notes:'Manages repurposing pipeline.' },
+  { id:'ct6',name:'Jordan Miles',role:'A&R — Spotify',email:'jordan.m@spotify.com',phone:'(555) 678-9012',profiles:['marc-randolph'],notes:'Podcast deal contact.' },
+  { id:'ct7',name:'Deja Robinson',role:'Events Coordinator',email:'deja@culture.co',phone:'(555) 789-0123',profiles:['culture'],notes:'Monthly mixer logistics. NYC + LA.' },
+  { id:'ct8',name:'Tyler Brooks',role:'Videographer',email:'tyler@freelance.co',phone:'(555) 890-1234',profiles:['marc-randolph','culture'],notes:'Shoots podcast and event content.' },
+];
+
+function EditContactModal({ contact, onClose, onSave }) {
+  const [name, setName] = useState(contact.name);
+  const [role, setRole] = useState(contact.role);
+  const [email, setEmail] = useState(contact.email);
+  const [phone, setPhone] = useState(contact.phone);
+  const [notes, setNotes] = useState(contact.notes||'');
+  const [selectedProfiles, setSelectedProfiles] = useState(contact.profiles||[contact.profile]);
+  const toggleProfile = (pid) => setSelectedProfiles(prev => prev.includes(pid) ? prev.filter(x=>x!==pid) : [...prev, pid]);
+  const handleSave = () => { onSave({ ...contact, name:name.trim(),role:role.trim(),email:email.trim(),phone:phone.trim(),notes:notes.trim(),profiles:selectedProfiles }); onClose(); };
+  const fs = { width:'100%',padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'13px',color:'var(--text)',marginBottom:'10px' };
+  return (
+    <div style={{ position:'fixed',inset:0,zIndex:100,display:'flex',justifyContent:'center',alignItems:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)' }} />
+      <div className="modal-enter" style={{ position:'relative',zIndex:1,background:'var(--modal-bg)',backdropFilter:'blur(20px)',border:'1px solid var(--border)',borderRadius:'12px',width:'440px',padding:'28px' }}>
+        <button onClick={onClose} style={{ position:'absolute',top:'14px',right:'14px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'6px',width:'26px',height:'26px',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+        <h2 style={{ fontSize:'16px',fontWeight:600,marginBottom:'20px' }}>Edit Contact</h2>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" style={fs} />
+        <input value={role} onChange={e=>setRole(e.target.value)} placeholder="Role / Title" style={fs} />
+        <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" style={fs} />
+        <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone" style={fs} />
+        <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." rows={2} style={{...fs, resize:'none'}} />
+        <div style={{ marginBottom:'16px' }}>
+          <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:'8px' }}>Assign to profiles</div>
+          <div style={{ display:'flex',gap:'6px',flexWrap:'wrap' }}>
+            {PROFILES.map(p => { const c = PROFILE_COLORS[p.id]; const sel = selectedProfiles.includes(p.id); return (
+              <button key={p.id} onClick={()=>toggleProfile(p.id)} style={{
+                display:'flex',alignItems:'center',gap:'6px',padding:'5px 12px',
+                background:sel?c+'20':'transparent',border:sel?`1px solid ${c}40`:'1px solid var(--border)',
+                borderRadius:'16px',cursor:'pointer',color:sel?'var(--text)':'var(--text-muted)',fontSize:'12px',transition:'all 0.15s',
+              }}><span style={{ width:'7px',height:'7px',borderRadius:'50%',background:c }} />{p.label}</button>);
+            })}
+          </div>
+        </div>
+        <div style={{ display:'flex',gap:'8px' }}>
+          <button onClick={handleSave} style={{ padding:'8px 20px',background:'var(--green)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Save</button>
+          <button onClick={onClose} style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddContactModal({ onClose, onSave }) {
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [notes, setNotes] = useState('');
+  const [selectedProfiles, setSelectedProfiles] = useState([]);
+  const toggleProfile = (pid) => setSelectedProfiles(prev => prev.includes(pid) ? prev.filter(x=>x!==pid) : [...prev, pid]);
+  const handleSave = () => {
+    if (!name.trim()) return;
+    onSave({ id:'ct'+Date.now(), name:name.trim(), role:role.trim(), email:email.trim(), phone:phone.trim(), notes:notes.trim(), profiles: selectedProfiles.length ? selectedProfiles : ['lightwork'] });
+    onClose();
+  };
+  const fieldStyle = { width:'100%',padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'13px',color:'var(--text)',marginBottom:'10px' };
+  return (
+    <div style={{ position:'fixed',inset:0,zIndex:100,display:'flex',justifyContent:'center',alignItems:'center' }}>
+      <div onClick={onClose} style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)' }} />
+      <div className="modal-enter" style={{ position:'relative',zIndex:1,background:'var(--modal-bg)',backdropFilter:'blur(20px)',border:'1px solid var(--border)',borderRadius:'12px',width:'440px',padding:'28px' }}>
+        <button onClick={onClose} style={{ position:'absolute',top:'14px',right:'14px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'6px',width:'26px',height:'26px',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+        <h2 style={{ fontSize:'16px',fontWeight:600,marginBottom:'20px' }}>Add Contact</h2>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" style={fieldStyle} />
+        <input value={role} onChange={e=>setRole(e.target.value)} placeholder="Role / Title" style={fieldStyle} />
+        <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" style={fieldStyle} />
+        <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone" style={fieldStyle} />
+        <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notes..." rows={2} style={{...fieldStyle, resize:'none'}} />
+        <div style={{ marginBottom:'16px' }}>
+          <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',letterSpacing:'0.04em',textTransform:'uppercase',marginBottom:'8px' }}>Assign to profiles</div>
+          <div style={{ display:'flex',gap:'6px',flexWrap:'wrap' }}>
+            {PROFILES.map(p => { const c = PROFILE_COLORS[p.id]; const sel = selectedProfiles.includes(p.id); return (
+              <button key={p.id} onClick={()=>toggleProfile(p.id)} style={{
+                display:'flex',alignItems:'center',gap:'6px',padding:'5px 12px',
+                background:sel?c+'20':'transparent',border:sel?`1px solid ${c}40`:'1px solid var(--border)',
+                borderRadius:'16px',cursor:'pointer',color:sel?'var(--text)':'var(--text-muted)',fontSize:'12px',transition:'all 0.15s',
+              }}>
+                <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:c }} />{p.label}
+              </button>);
+            })}
+          </div>
+        </div>
+        <div style={{ display:'flex',gap:'8px' }}>
+          <button onClick={handleSave} style={{ padding:'8px 20px',background:'var(--green)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Add Contact</button>
+          <button onClick={onClose} style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactsView({ contacts, setContacts, activeProfile, setActiveProfile }) {
+  const [search, setSearch] = useState('');
+  const [filterProfile, setFilterProfile] = useState('all');
+  const [showAdd, setShowAdd] = useState(false);
+  const [editContact, setEditContact] = useState(null);
+  const profileCounts = { all: contacts.length };
+  PROFILES.forEach(p => { profileCounts[p.id] = contacts.filter(c => (c.profiles||[c.profile]).includes(p.id)).length; });
+  const filtered = contacts.filter(c => {
+    const matchSearch = (c.name+c.role+c.email).toLowerCase().includes(search.toLowerCase());
+    const matchProfile = filterProfile === 'all' || (c.profiles||[c.profile]).includes(filterProfile);
+    return matchSearch && matchProfile;
+  });
+  const addContact = (contact) => setContacts(prev => [...prev, contact]);
+  const removeContact = (id) => setContacts(prev => prev.filter(c => c.id !== id));
+  const updateContact = (updated) => setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
+
+  return (
+    <div style={{ flex:1,overflow:'auto',padding:'28px 32px' }}>
+      <div style={{ marginBottom:'20px' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px' }}>
+          <h1 style={{ fontSize:'15px',fontWeight:600 }}>Contacts</h1>
+          <div style={{ display:'flex',gap:'8px',alignItems:'center' }}>
+            <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 12px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)',width:'200px' }}>
+              <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." style={{ fontSize:'12px',width:'100%' }} />
+            </div>
+            <button onClick={()=>setShowAdd(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ Add Contact</button>
+          </div>
+        </div>
+        {/* Profile filter pills */}
+        <div style={{ display:'flex',gap:'6px',flexWrap:'wrap' }}>
+          <button onClick={()=>setFilterProfile('all')} style={{
+            display:'flex',alignItems:'center',gap:'6px',padding:'5px 12px',
+            background:filterProfile==='all'?'var(--surface-hover)':'transparent',
+            border:filterProfile==='all'?'1px solid var(--border-light)':'1px solid transparent',
+            borderRadius:'16px',cursor:'pointer',color:filterProfile==='all'?'var(--text)':'var(--text-secondary)',
+            fontSize:'12px',fontWeight:filterProfile==='all'?500:400,
+          }}>All <span style={{ fontSize:'11px',opacity:0.6 }}>{profileCounts.all}</span></button>
+          {PROFILES.map(p => {
+            const c = PROFILE_COLORS[p.id];
+            const isActive = filterProfile === p.id;
+            return (
+              <button key={p.id} onClick={()=>setFilterProfile(p.id)} style={{
+                display:'flex',alignItems:'center',gap:'6px',padding:'5px 12px',
+                background:isActive?c+'18':'transparent',
+                border:isActive?`1px solid ${c}35`:'1px solid transparent',
+                borderRadius:'16px',cursor:'pointer',color:isActive?'var(--text)':'var(--text-secondary)',
+                fontSize:'12px',fontWeight:isActive?500:400,transition:'all 0.15s',
+              }}>
+                <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:c }} />
+                {p.label}
+                <span style={{ fontSize:'11px',opacity:0.6 }}>{profileCounts[p.id]||0}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:'10px' }}>
+        {filtered.map(c => {
+          const profileList = c.profiles || [c.profile];
+          const primaryColor = PROFILE_COLORS[profileList[0]] || '#777';
+          return (
+            <div key={c.id} onClick={()=>setEditContact(c)} style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'16px',transition:'border-color 0.15s',cursor:'pointer' }}
+              onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+              <div style={{ display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px' }}>
+                <div style={{ width:'32px',height:'32px',borderRadius:'50%',background:primaryColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',fontWeight:700,color:primaryColor }}>{c.name.split(' ').map(n=>n[0]).join('')}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:'13px',fontWeight:600 }}>{c.name}</div>
+                  <div style={{ fontSize:'11px',color:'var(--text-muted)' }}>{c.role}</div>
+                </div>
+                <button onClick={()=>removeContact(c.id)} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,opacity:0.4,transition:'opacity 0.15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0.4'}>&times;</button>
+              </div>
+              {/* Profile tags */}
+              <div style={{ display:'flex',gap:'4px',flexWrap:'wrap',marginBottom:'8px' }}>
+                {profileList.map(pid => {
+                  const pc = PROFILE_COLORS[pid]; const pl = PROFILES.find(x=>x.id===pid)?.label||pid;
+                  return <span key={pid} style={{ fontSize:'10px',fontWeight:500,padding:'2px 7px',background:pc+'15',color:pc,borderRadius:'4px' }}>{pl}</span>;
+                })}
+              </div>
+              <div style={{ fontSize:'12px',color:'var(--text-secondary)',marginBottom:'4px' }}>{c.email}</div>
+              <div style={{ fontSize:'12px',color:'var(--text-muted)' }}>{c.phone}</div>
+              {c.notes && <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'8px',paddingTop:'8px',borderTop:'1px solid var(--border)',lineHeight:'1.5' }}>{c.notes}</div>}
+            </div>
+          );
+        })}
+      </div>
+      {showAdd && <AddContactModal onClose={()=>setShowAdd(false)} onSave={addContact} />}
+      {editContact && <EditContactModal contact={editContact} onClose={()=>setEditContact(null)} onSave={updated => { updateContact(updated); setEditContact(null); }} />}
+    </div>
+  );
+}
+
+/* ── Calendar View ─────────────────────────────────────────────────────── */
+function CalendarView({ deals, content }) {
+  const today = new Date();
+  const year = today.getFullYear(); const month = today.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthName = today.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  // Build events from deals + content that have dueDate set
+  const events = {};
+  const addEvent = (day, title, color) => {
+    if (!events[day]) events[day] = [];
+    events[day].push({ title, color });
+  };
+  // Pull from all profiles
+  Object.entries(deals).forEach(([pid, ds]) => {
+    const c = PROFILE_COLORS[pid] || '#777';
+    ds.forEach(d => { if (d.dueDate) { const dd = new Date(d.dueDate); if (dd.getMonth() === month && dd.getFullYear() === year) addEvent(dd.getDate(), d.title.split('//')[0].trim(), c); }});
+  });
+  Object.entries(content).forEach(([pid, cs]) => {
+    const c = PROFILE_COLORS[pid] || '#777';
+    cs.forEach(item => { if (item.dueDate) { const dd = new Date(item.dueDate); if (dd.getMonth() === month && dd.getFullYear() === year) addEvent(dd.getDate(), item.title, c); }});
+  });
+  // Add some static fallback events if calendar is empty
+  const hasEvents = Object.keys(events).length > 0;
+  if (!hasEvents) {
+    addEvent(3, 'Nike sync', 'var(--cyan)');
+    addEvent(7, 'Podcast recording', 'var(--purple)');
+    addEvent(12, 'Culture mixer NYC', 'var(--cyan)');
+    addEvent(15, 'Spotify review', 'var(--green)');
+    addEvent(18, 'SXSW prep', 'var(--purple)');
+    addEvent(22, 'Adidas deliverables', 'var(--green)');
+    addEvent(24, 'Team standup', 'var(--orange)');
+    addEvent(28, 'Month-end review', 'var(--blue)');
+  }
+
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  return (
+    <div style={{ flex:1,overflow:'auto',padding:'28px 32px' }}>
+      <h1 style={{ fontSize:'15px',fontWeight:600,marginBottom:'24px' }}>{monthName}</h1>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'1px',background:'var(--border)',borderRadius:'var(--radius)',overflow:'hidden' }}>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} style={{ padding:'8px',fontSize:'10px',fontWeight:600,letterSpacing:'0.04em',color:'var(--text-muted)',textTransform:'uppercase',background:'var(--surface)',textAlign:'center' }}>{d}</div>
+        ))}
+        {cells.map((day, i) => {
+          const isToday = day === today.getDate();
+          const dayEvents = events[day] || [];
+          return (
+            <div key={i} style={{ minHeight:'80px',padding:'6px 8px',background:'var(--bg)',position:'relative' }}>
+              {day && <>
+                <span style={{ fontSize:'12px',fontWeight:isToday?700:400,color:isToday?'var(--green)':'var(--text-secondary)',display:'inline-flex',alignItems:'center',justifyContent:'center',width:isToday?'22px':'auto',height:isToday?'22px':'auto',borderRadius:'50%',background:isToday?'var(--green)'+'20':'transparent' }}>{day}</span>
+                {dayEvents.map((ev,j) => (
+                  <div key={j} style={{ fontSize:'10px',fontWeight:500,padding:'2px 5px',marginTop:'3px',borderRadius:'3px',background:ev.color+'15',color:ev.color,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{ev.title}</div>
+                ))}
+              </>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Settings View ─────────────────────────────────────────────────────── */
+function SettingsView({ theme, setTheme }) {
+  return (
+    <div style={{ flex:1,overflow:'auto',padding:'28px 32px',maxWidth:'600px' }}>
+      <h1 style={{ fontSize:'15px',fontWeight:600,marginBottom:'24px' }}>Settings</h1>
+
+      <div style={{ marginBottom:'24px' }}>
+        <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Appearance</div>
+        <div style={{ display:'flex',gap:'8px' }}>
+          {['dark','light'].map(t => (
+            <button key={t} onClick={() => { setTheme(t); document.documentElement.setAttribute('data-theme', t); }}
+              style={{ padding:'10px 20px',background:theme===t?'var(--surface-hover)':'var(--surface)',border:`1px solid ${theme===t?'var(--green)':'var(--border)'}`,borderRadius:'var(--radius)',cursor:'pointer',color:theme===t?'var(--text)':'var(--text-secondary)',fontSize:'13px',fontWeight:500,textTransform:'capitalize' }}>{t} mode</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom:'24px' }}>
+        <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Profiles</div>
+        {PROFILES.map(p => { const c = PROFILE_COLORS[p.id]; return (
+          <div key={p.id} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'10px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',marginBottom:'6px' }}>
+            <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:c }} />
+            <span style={{ fontSize:'13px',flex:1 }}>{p.label}</span>
+            <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>Active</span>
+          </div>);
+        })}
+      </div>
+
+      <div>
+        <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Data</div>
+        <button onClick={() => { localStorage.clear(); window.location.reload(); }}
+          style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--red)',borderRadius:'var(--radius-sm)',color:'var(--red)',fontSize:'12px',fontWeight:500,cursor:'pointer' }}>
+          Clear all data &amp; reset
+        </button>
+        <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'6px' }}>All deals, content, and contacts will be reset to defaults.</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+/* ── Scramble Logo ──────────────────────────────────────────────────────── */
+function ScrambleLogo() {
+  const words = ['s t u d i o', 'i p    l a b', 'l i g h t w o r k'];
+  const chars = 'abcdefghijklmnopqrstuvwxyz!@#$%^&*()_+{}|:<>?0123456789';
+  const [display, setDisplay] = useState(words[0]);
+  const [hovering, setHovering] = useState(false);
+  const targetRef = useRef(0);
+  const intervalRef = useRef(null);
+
+  const scrambleTo = (targetIdx) => {
+    const target = words[targetIdx];
+    let iteration = 0;
+    clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setDisplay(target.split('').map((ch, i) => {
+        if (ch === ' ') return ' ';
+        if (i < iteration) return target[i];
+        return chars[Math.floor(Math.random() * chars.length)];
+      }).join(''));
+      iteration += 1/2;
+      if (iteration >= target.length) {
+        clearInterval(intervalRef.current);
+        setDisplay(target);
+      }
+    }, 30);
+  };
+
+  const handleEnter = () => {
+    setHovering(true);
+    targetRef.current = (targetRef.current + 1) % words.length;
+    scrambleTo(targetRef.current);
+  };
+  const handleLeave = () => {
+    setHovering(false);
+  };
+
+  useEffect(() => { return () => clearInterval(intervalRef.current); }, []);
+
+  return (
+    <div onMouseEnter={handleEnter} onMouseLeave={handleLeave}
+      style={{ fontSize:'11px',fontWeight:500,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--text-secondary)',cursor:'default',fontFamily:'monospace',transition:'color 0.2s',userSelect:'none' }}>
+      {display}
+    </div>
+  );
+}
+
+function ThemeToggle({ theme, setTheme }) {
+  return (
+    <button onClick={() => { const next = theme === 'dark' ? 'light' : 'dark'; setTheme(next); document.documentElement.setAttribute('data-theme', next); }}
+      style={{ display:'flex',alignItems:'center',gap:'8px',padding:'6px 10px',width:'100%',background:'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:'var(--text-muted)',fontSize:'12px',textAlign:'left',transition:'color 0.2s' }}>
+      <span style={{ fontSize:'14px' }}>{theme === 'dark' ? '\u263E' : '\u2600'}</span>
+      {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+    </button>
+  );
+}
+
+function Sidebar({ activeView, setActiveView, theme, setTheme }) {
+  return (
+    <div style={{ width:'210px',minWidth:'210px',borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',height:'100vh',background:'var(--bg)',transition:'background 0.3s ease, border-color 0.3s ease' }}>
+      <div style={{ padding:'18px 18px 14px',borderBottom:'1px solid var(--border)' }}>
+        <ScrambleLogo />
+      </div>
+      <div style={{ padding:'10px 10px 4px' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 10px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)' }}>
+          <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
+          <input placeholder="Search..." style={{ fontSize:'12px',width:'100%' }} />
+        </div>
+      </div>
+      <div style={{ padding:'14px 10px 0' }}>
+        <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--text-muted)',padding:'0 10px 6px' }}>Views</div>
+        {[{id:'deals',label:'Deals'},{id:'content',label:'Content'}].map(v => (
+          <button key={v.id} onClick={() => setActiveView(v.id)} style={{ display:'flex',alignItems:'center',padding:'7px 10px',width:'100%',background:activeView===v.id?'var(--surface-hover)':'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:activeView===v.id?'var(--text)':'var(--text-secondary)',fontSize:'13px',fontWeight:activeView===v.id?500:400,textAlign:'left' }}>{v.label}</button>
+        ))}
+      </div>
+      <div style={{ marginTop:'auto',borderTop:'1px solid var(--border)',padding:'10px' }}>
+        {[{id:'contacts',label:'Contacts'},{id:'calendar',label:'Calendar'},{id:'settings',label:'Settings'}].map(v => (
+          <button key={v.id} onClick={() => setActiveView(v.id)} style={{
+            display:'flex',alignItems:'center',padding:'6px 10px',width:'100%',
+            background:activeView===v.id?'var(--surface-hover)':'transparent',
+            border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',
+            color:activeView===v.id?'var(--text)':'var(--text-muted)',fontSize:'12px',textAlign:'left',
+          }}>{v.label}</button>
+        ))}
+        <ThemeToggle theme={theme} setTheme={setTheme} />
+      </div>
+    </div>
+  );
+}
+
+/* ── App ───────────────────────────────────────────────────────────────── */
+function App() {
+  const [activeView, setActiveView] = usePersistedState('studio-view', 'deals');
+  const [activeProfile, setActiveProfile] = usePersistedState('studio-profile', 'marc-randolph');
+  const [deals, setDeals] = usePersistedState('studio-deals', initDeals);
+  const [content, setContent] = usePersistedState('studio-content', initContent);
+  const [contacts, setContacts] = usePersistedState('studio-contacts', initContacts);
+  const [theme, setTheme] = usePersistedState('studio-theme', 'dark');
+  const [openCard, setOpenCard] = useState(null);
+  const [openCardType, setOpenCardType] = useState(null);
+
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+
+  const handleOpenCard = (card, type) => { setOpenCard(card); setOpenCardType(type); };
+  const handleCloseCard = () => { setOpenCard(null); setOpenCardType(null); };
+  const handleUpdateCard = (updated) => {
+    if (openCardType === 'deal') {
+      setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(d => d.id === updated.id ? updated : d) }));
+    } else {
+      setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(c => c.id === updated.id ? updated : c) }));
+    }
+    handleCloseCard();
+  };
+
+  return (
+    <div style={{ display:'flex',height:'100vh',position:'relative',transition:'background 0.3s ease, color 0.3s ease' }}>
+      <div className="grid-bg" />
+      <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} />
+      {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} onOpenCard={handleOpenCard} />}
+      {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} />}
+      {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
+      {activeView === 'calendar' && <CalendarView deals={deals} content={content} />}
+      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} />}
+      {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

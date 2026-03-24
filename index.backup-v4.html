@@ -137,22 +137,6 @@ const CONTENT_STAGES = ['source','tweets','platform-ready','posted'];
 const CONTENT_LABELS = { source:'SOURCE',tweets:'TWEETS','platform-ready':'PLATFORM READY',posted:'POSTED' };
 const TYPE_COLORS = { 'Long-form':'#a78bfa','Carousel':'#a78bfa','Short-form':'#60a5fa','Thread':'#fb923c' };
 
-/* ── Confirm Dialog ────────────────────────────────────────────────────── */
-function ConfirmDialog({ message, onConfirm, onCancel }) {
-  return (
-    <div style={{ position:'fixed',inset:0,zIndex:300,display:'flex',justifyContent:'center',alignItems:'center' }}>
-      <div onClick={onCancel} style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.5)',backdropFilter:'blur(4px)' }} />
-      <div className="modal-enter" style={{ position:'relative',zIndex:1,background:'var(--modal-bg)',backdropFilter:'blur(20px)',border:'1px solid var(--border)',borderRadius:'12px',padding:'24px',minWidth:'320px',maxWidth:'400px',textAlign:'center' }}>
-        <div style={{ fontSize:'14px',fontWeight:500,color:'var(--text)',marginBottom:'20px',lineHeight:1.5 }}>{message}</div>
-        <div style={{ display:'flex',gap:'8px',justifyContent:'center' }}>
-          <button onClick={onConfirm} style={{ padding:'8px 20px',background:'var(--red)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Delete</button>
-          <button onClick={onCancel} style={{ padding:'8px 20px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ── Drag context ──────────────────────────────────────────────────────── */
 let dragData = null;
 
@@ -458,18 +442,14 @@ function DealCard({ deal, profileId, onOpen, onArchive, onDelete }) {
   const color = PROFILE_COLORS[profileId] || '#777';
   const label = PROFILES.find(p => p.id === profileId)?.label || '';
   const [ctx, setCtx] = useState(null);
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [hoverX, setHoverX] = useState(false);
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
     <div draggable onDragStart={e => { dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
       onClick={() => onOpen(deal)} onContextMenu={handleContext}
-      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s',position:'relative' }}
-      onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--border-light)';setHoverX(true);}} onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';setHoverX(false);}}>
-      {hoverX && <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ position:'absolute',top:'6px',right:'6px',width:'20px',height:'20px',borderRadius:'4px',background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',transition:'color 0.15s' }}
-        onMouseEnter={e=>e.currentTarget.style.color='var(--red)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>&times;</button>}
+      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
         <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
           <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:color }} />
@@ -484,9 +464,8 @@ function DealCard({ deal, profileId, onOpen, onArchive, onDelete }) {
       { icon:'↗', label:'Open', action:() => onOpen(deal) },
       { divider: true },
       { icon:'📦', label:'Archive', action:() => onArchive(deal) },
-      { icon:'🗑', label:'Delete', action:() => setConfirmDel(true), danger:true },
+      { icon:'🗑', label:'Delete', action:() => onDelete(deal.id), danger:true },
     ]} />}
-    {confirmDel && <ConfirmDialog message={`Delete "${deal.title}"? This cannot be undone.`} onConfirm={() => { onDelete(deal.id); setConfirmDel(false); }} onCancel={() => setConfirmDel(false)} />}
     </>
   );
 }
@@ -494,18 +473,14 @@ function DealCard({ deal, profileId, onOpen, onArchive, onDelete }) {
 function ContentCard({ item, onOpen, onArchive, onDelete }) {
   const tc = TYPE_COLORS[item.type] || '#777';
   const [ctx, setCtx] = useState(null);
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [hoverX, setHoverX] = useState(false);
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
     <div draggable onDragStart={e => { dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
       onClick={() => onOpen(item)} onContextMenu={handleContext}
-      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s',position:'relative' }}
-      onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--border-light)';setHoverX(true);}} onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';setHoverX(false);}}>
-      {hoverX && <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ position:'absolute',top:'6px',right:'6px',width:'20px',height:'20px',borderRadius:'4px',background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',transition:'color 0.15s' }}
-        onMouseEnter={e=>e.currentTarget.style.color='var(--red)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>&times;</button>}
+      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s' }}
+      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
         <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
           <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:tc }} />
@@ -522,9 +497,8 @@ function ContentCard({ item, onOpen, onArchive, onDelete }) {
       { icon:'↗', label:'Open', action:() => onOpen(item) },
       { divider: true },
       { icon:'📦', label:'Archive', action:() => onArchive(item) },
-      { icon:'🗑', label:'Delete', action:() => setConfirmDel(true), danger:true },
+      { icon:'🗑', label:'Delete', action:() => onDelete(item.id), danger:true },
     ]} />}
-    {confirmDel && <ConfirmDialog message={`Delete "${item.title}"? This cannot be undone.`} onConfirm={() => { onDelete(item.id); setConfirmDel(false); }} onCancel={() => setConfirmDel(false)} />}
     </>
   );
 }
@@ -906,36 +880,6 @@ function AddContactModal({ onClose, onSave }) {
   );
 }
 
-function ContactCard({ contact: c, profileList, primaryColor, onEdit, onDelete }) {
-  const [confirmDel, setConfirmDel] = useState(false);
-  return (
-    <>
-    <div onClick={onEdit} style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'16px',transition:'border-color 0.15s',cursor:'pointer' }}
-      onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
-      <div style={{ display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px' }}>
-        <div style={{ width:'32px',height:'32px',borderRadius:'50%',background:primaryColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',fontWeight:700,color:primaryColor }}>{c.name.split(' ').map(n=>n[0]).join('')}</div>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:'13px',fontWeight:600 }}>{c.name}</div>
-          <div style={{ fontSize:'11px',color:'var(--text-muted)' }}>{c.role}</div>
-        </div>
-        <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,opacity:0.4,transition:'opacity 0.15s,color 0.15s' }}
-          onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.color='var(--red)';}} onMouseLeave={e=>{e.currentTarget.style.opacity='0.4';e.currentTarget.style.color='var(--text-muted)';}}>&times;</button>
-      </div>
-      <div style={{ display:'flex',gap:'4px',flexWrap:'wrap',marginBottom:'8px' }}>
-        {profileList.map(pid => {
-          const pc = PROFILE_COLORS[pid]; const pl = PROFILES.find(x=>x.id===pid)?.label||pid;
-          return <span key={pid} style={{ fontSize:'10px',fontWeight:500,padding:'2px 7px',background:pc+'15',color:pc,borderRadius:'4px' }}>{pl}</span>;
-        })}
-      </div>
-      <div style={{ fontSize:'12px',color:'var(--text-secondary)',marginBottom:'4px' }}>{c.email}</div>
-      <div style={{ fontSize:'12px',color:'var(--text-muted)' }}>{c.phone}</div>
-      {c.notes && <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'8px',paddingTop:'8px',borderTop:'1px solid var(--border)',lineHeight:'1.5' }}>{c.notes}</div>}
-    </div>
-    {confirmDel && <ConfirmDialog message={`Delete contact "${c.name}"? This cannot be undone.`} onConfirm={() => { onDelete(); setConfirmDel(false); }} onCancel={() => setConfirmDel(false)} />}
-    </>
-  );
-}
-
 function ContactsView({ contacts, setContacts, activeProfile, setActiveProfile }) {
   const [search, setSearch] = useState('');
   const [filterProfile, setFilterProfile] = useState('all');
@@ -998,7 +942,28 @@ function ContactsView({ contacts, setContacts, activeProfile, setActiveProfile }
           const profileList = c.profiles || [c.profile];
           const primaryColor = PROFILE_COLORS[profileList[0]] || '#777';
           return (
-            <ContactCard key={c.id} contact={c} profileList={profileList} primaryColor={primaryColor} onEdit={()=>setEditContact(c)} onDelete={()=>removeContact(c.id)} />
+            <div key={c.id} onClick={()=>setEditContact(c)} style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'16px',transition:'border-color 0.15s',cursor:'pointer' }}
+              onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+              <div style={{ display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px' }}>
+                <div style={{ width:'32px',height:'32px',borderRadius:'50%',background:primaryColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'12px',fontWeight:700,color:primaryColor }}>{c.name.split(' ').map(n=>n[0]).join('')}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:'13px',fontWeight:600 }}>{c.name}</div>
+                  <div style={{ fontSize:'11px',color:'var(--text-muted)' }}>{c.role}</div>
+                </div>
+                <button onClick={()=>removeContact(c.id)} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,opacity:0.4,transition:'opacity 0.15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.opacity='1'} onMouseLeave={e=>e.currentTarget.style.opacity='0.4'}>&times;</button>
+              </div>
+              {/* Profile tags */}
+              <div style={{ display:'flex',gap:'4px',flexWrap:'wrap',marginBottom:'8px' }}>
+                {profileList.map(pid => {
+                  const pc = PROFILE_COLORS[pid]; const pl = PROFILES.find(x=>x.id===pid)?.label||pid;
+                  return <span key={pid} style={{ fontSize:'10px',fontWeight:500,padding:'2px 7px',background:pc+'15',color:pc,borderRadius:'4px' }}>{pl}</span>;
+                })}
+              </div>
+              <div style={{ fontSize:'12px',color:'var(--text-secondary)',marginBottom:'4px' }}>{c.email}</div>
+              <div style={{ fontSize:'12px',color:'var(--text-muted)' }}>{c.phone}</div>
+              {c.notes && <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'8px',paddingTop:'8px',borderTop:'1px solid var(--border)',lineHeight:'1.5' }}>{c.notes}</div>}
+            </div>
           );
         })}
       </div>

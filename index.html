@@ -217,7 +217,7 @@ function QuickLinks() {
 }
 
 /* ── Card Detail Modal ─────────────────────────────────────────────────── */
-function CardDetail({ card, onClose, onUpdate, color }) {
+function CardDetail({ card, onClose, onUpdate, onArchive, color }) {
   const isDeal = card.value !== undefined;
   const [title, setTitle] = useState(card.title || '');
   const [value, setValue] = useState(card.value != null ? String(card.value) : '');
@@ -376,9 +376,13 @@ function CardDetail({ card, onClose, onUpdate, color }) {
         </div>
 
         {/* Actions */}
-        <div style={{ display:'flex',gap:'8px',paddingTop:'16px',borderTop:'1px solid var(--border)' }}>
+        <div style={{ display:'flex',gap:'8px',paddingTop:'16px',borderTop:'1px solid var(--border)',alignItems:'center' }}>
           <button onClick={save} style={{ padding:'8px 20px',background:color,border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'13px',fontWeight:600,cursor:'pointer' }}>Save</button>
           <button onClick={onClose} style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'13px',cursor:'pointer' }}>Cancel</button>
+          {onArchive && <button onClick={() => { onArchive(card); onClose(); }} style={{ marginLeft:'auto',padding:'8px 16px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-muted)',fontSize:'12px',cursor:'pointer',transition:'color 0.15s,border-color 0.15s' }}
+            onMouseEnter={e=>{e.currentTarget.style.color='var(--red)';e.currentTarget.style.borderColor='var(--red)';}}
+            onMouseLeave={e=>{e.currentTarget.style.color='var(--text-muted)';e.currentTarget.style.borderColor='var(--border)';}}
+          >Archive</button>}
         </div>
       </div>
     </div>
@@ -967,6 +971,107 @@ function SettingsView({ theme, setTheme }) {
 }
 
 /* ── Sidebar ───────────────────────────────────────────────────────────── */
+/* ── Archive View ──────────────────────────────────────────────────────── */
+function ArchiveView({ archive, setArchive, deals, setDeals, content, setContent }) {
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterProfile, setFilterProfile] = useState('all');
+
+  const filtered = archive.filter(item => {
+    const matchSearch = (item.title || '').toLowerCase().includes(search.toLowerCase());
+    const matchType = filterType === 'all' || item._archiveType === filterType;
+    const matchProfile = filterProfile === 'all' || item._archiveProfile === filterProfile;
+    return matchSearch && matchType && matchProfile;
+  });
+
+  const restore = (item) => {
+    const { _archiveType, _archiveProfile, _archivedAt, ...card } = item;
+    if (_archiveType === 'deal') {
+      setDeals(prev => ({ ...prev, [_archiveProfile]: [...(prev[_archiveProfile]||[]), card] }));
+    } else {
+      setContent(prev => ({ ...prev, [_archiveProfile]: [...(prev[_archiveProfile]||[]), card] }));
+    }
+    setArchive(prev => prev.filter(a => a.id !== item.id));
+  };
+
+  const permanentDelete = (id) => {
+    setArchive(prev => prev.filter(a => a.id !== id));
+  };
+
+  return (
+    <div style={{ flex:1,overflow:'auto',padding:'28px 32px' }}>
+      <div style={{ marginBottom:'20px' }}>
+        <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px' }}>
+          <h1 style={{ fontSize:'15px',fontWeight:600 }}>Archive</h1>
+          <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 12px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)',width:'200px' }}>
+            <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search archive..." style={{ fontSize:'12px',width:'100%' }} />
+          </div>
+        </div>
+        {/* Filters */}
+        <div style={{ display:'flex',gap:'6px',flexWrap:'wrap',marginBottom:'10px' }}>
+          {[{id:'all',label:'All'},{id:'deal',label:'Deals'},{id:'content',label:'Content'}].map(t => (
+            <button key={t.id} onClick={()=>setFilterType(t.id)} style={{
+              padding:'5px 12px',fontSize:'12px',
+              background:filterType===t.id?'var(--surface-hover)':'transparent',
+              border:filterType===t.id?'1px solid var(--border-light)':'1px solid transparent',
+              borderRadius:'16px',cursor:'pointer',color:filterType===t.id?'var(--text)':'var(--text-secondary)',fontWeight:filterType===t.id?500:400,
+            }}>{t.label}</button>
+          ))}
+          <span style={{ width:'1px',background:'var(--border)',margin:'0 4px' }} />
+          {[{id:'all',label:'All Profiles'},...PROFILES].map(p => {
+            const c = p.id === 'all' ? 'var(--text-muted)' : PROFILE_COLORS[p.id];
+            return (
+              <button key={p.id} onClick={()=>setFilterProfile(p.id)} style={{
+                display:'flex',alignItems:'center',gap:'6px',padding:'5px 12px',fontSize:'12px',
+                background:filterProfile===p.id?(p.id==='all'?'var(--surface-hover)':c+'18'):'transparent',
+                border:filterProfile===p.id?`1px solid ${p.id==='all'?'var(--border-light)':c+'35'}`:'1px solid transparent',
+                borderRadius:'16px',cursor:'pointer',color:filterProfile===p.id?'var(--text)':'var(--text-secondary)',fontWeight:filterProfile===p.id?500:400,
+              }}>
+                {p.id !== 'all' && <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:c }} />}
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={{ textAlign:'center',padding:'60px 0',color:'var(--text-muted)' }}>
+          <div style={{ fontSize:'14px',marginBottom:'4px' }}>No archived items</div>
+          <div style={{ fontSize:'12px' }}>Items you archive from deals or content will appear here</div>
+        </div>
+      ) : (
+        <div style={{ display:'flex',flexDirection:'column',gap:'6px' }}>
+          {filtered.map(item => {
+            const color = PROFILE_COLORS[item._archiveProfile] || '#777';
+            const profileLabel = PROFILES.find(p=>p.id===item._archiveProfile)?.label || '';
+            const date = item._archivedAt ? new Date(item._archivedAt).toLocaleDateString() : '';
+            return (
+              <div key={item.id} style={{ display:'flex',alignItems:'center',gap:'12px',padding:'12px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',transition:'border-color 0.15s' }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-light)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:color,flexShrink:0 }} />
+                <div style={{ flex:1,minWidth:0 }}>
+                  <div style={{ fontSize:'13px',fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{item.title}</div>
+                  <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'2px' }}>
+                    {profileLabel} &middot; {item._archiveType} {date && <span>&middot; {date}</span>}
+                  </div>
+                </div>
+                {item.value != null && <span style={{ fontSize:'12px',fontWeight:600,color:'var(--text-muted)' }}>{fmtFull(item.value)}</span>}
+                <button onClick={()=>restore(item)} style={{ padding:'5px 12px',background:'transparent',border:'1px solid var(--green)',borderRadius:'var(--radius-sm)',color:'var(--green)',fontSize:'11px',fontWeight:500,cursor:'pointer',whiteSpace:'nowrap' }}>Restore</button>
+                <button onClick={()=>permanentDelete(item.id)} style={{ padding:'5px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-muted)',fontSize:'11px',cursor:'pointer',transition:'color 0.15s,border-color 0.15s' }}
+                  onMouseEnter={e=>{e.currentTarget.style.color='var(--red)';e.currentTarget.style.borderColor='var(--red)';}}
+                  onMouseLeave={e=>{e.currentTarget.style.color='var(--text-muted)';e.currentTarget.style.borderColor='var(--border)';}}
+                >Delete</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Scramble Logo ──────────────────────────────────────────────────────── */
 function ScrambleLogo() {
   const words = ['s t u d i o', 'i p    l a b', 'l i g h t w o r k'];
@@ -1042,7 +1147,7 @@ function Sidebar({ activeView, setActiveView, theme, setTheme }) {
         ))}
       </div>
       <div style={{ marginTop:'auto',borderTop:'1px solid var(--border)',padding:'10px' }}>
-        {[{id:'contacts',label:'Contacts'},{id:'calendar',label:'Calendar'},{id:'settings',label:'Settings'}].map(v => (
+        {[{id:'contacts',label:'Contacts'},{id:'calendar',label:'Calendar'},{id:'archive',label:'Archive'},{id:'settings',label:'Settings'}].map(v => (
           <button key={v.id} onClick={() => setActiveView(v.id)} style={{
             display:'flex',alignItems:'center',padding:'6px 10px',width:'100%',
             background:activeView===v.id?'var(--surface-hover)':'transparent',
@@ -1063,6 +1168,7 @@ function App() {
   const [deals, setDeals] = usePersistedState('studio-deals', initDeals);
   const [content, setContent] = usePersistedState('studio-content', initContent);
   const [contacts, setContacts] = usePersistedState('studio-contacts', initContacts);
+  const [archive, setArchive] = usePersistedState('studio-archive', []);
   const [theme, setTheme] = usePersistedState('studio-theme', 'dark');
   const [openCard, setOpenCard] = useState(null);
   const [openCardType, setOpenCardType] = useState(null);
@@ -1079,6 +1185,16 @@ function App() {
     }
     handleCloseCard();
   };
+  const handleArchiveCard = (card) => {
+    const archiveItem = { ...card, _archiveType: openCardType, _archiveProfile: activeProfile, _archivedAt: new Date().toISOString() };
+    setArchive(prev => [archiveItem, ...prev]);
+    if (openCardType === 'deal') {
+      setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].filter(d => d.id !== card.id) }));
+    } else {
+      setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].filter(c => c.id !== card.id) }));
+    }
+    handleCloseCard();
+  };
 
   return (
     <div style={{ display:'flex',height:'100vh',position:'relative',transition:'background 0.3s ease, color 0.3s ease' }}>
@@ -1088,8 +1204,9 @@ function App() {
       {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} />}
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} />}
+      {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
       {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} />}
-      {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} />}
+      {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} onArchive={handleArchiveCard} />}
     </div>
   );
 }

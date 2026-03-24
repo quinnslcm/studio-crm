@@ -1760,8 +1760,8 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
       onDoubleClick={e => { e.stopPropagation(); setEditing(true); setEditLabel(view.label); }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); }}
       style={{
-        display:'flex', alignItems:'center', gap:'4px',
-        padding: isChild ? '5px 10px 5px 28px' : '7px 10px',
+        display:'flex', alignItems:'center', gap:'2px',
+        padding: isChild ? '5px 10px 5px 22px' : '7px 10px',
         width:'100%', background: isActive ? 'var(--surface-hover)' : (dragOverId === view.id ? 'var(--surface)' : 'transparent'),
         border:'none', borderRadius:'var(--radius-sm)', cursor: editing ? 'text' : 'grab',
         color: isActive ? 'var(--text)' : 'var(--text-secondary)',
@@ -1769,12 +1769,14 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
         transition:'background 0.1s, border-color 0.1s',
         borderLeft: dragOverId === view.id ? '2px solid var(--green)' : '2px solid transparent',
       }}>
-      <span onClick={e => { if(hasChildren){e.stopPropagation(); onToggle(view.id);} }}
-        style={{ fontSize:'13px', color: hasChildren ? 'var(--text-secondary)' : 'transparent', cursor: hasChildren ? 'pointer' : 'default', width:'18px', height:'18px', display:'inline-flex', alignItems:'center', justifyContent:'center', textAlign:'center', transition:'transform 0.15s, color 0.15s', transform: isExpanded && hasChildren ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink:0, userSelect:'none', borderRadius:'3px' }}
-        onMouseEnter={e => { if(hasChildren) e.currentTarget.style.color='var(--text)'; }}
-        onMouseLeave={e => { if(hasChildren) e.currentTarget.style.color='var(--text-secondary)'; }}>
-        {hasChildren ? '▸' : '·'}
-      </span>
+      {hasChildren && (
+        <span onClick={e => { e.stopPropagation(); onToggle(view.id); }}
+          style={{ fontSize:'13px', color:'var(--text-secondary)', cursor:'pointer', width:'16px', height:'16px', display:'inline-flex', alignItems:'center', justifyContent:'center', transition:'transform 0.15s, color 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink:0, userSelect:'none', borderRadius:'3px' }}
+          onMouseEnter={e => e.currentTarget.style.color='var(--text)'}
+          onMouseLeave={e => e.currentTarget.style.color='var(--text-secondary)'}>
+          ▸
+        </span>
+      )}
       {editing ? (
         <input ref={inputRef} value={editLabel} onChange={e => setEditLabel(e.target.value)}
           onClick={e => e.stopPropagation()}

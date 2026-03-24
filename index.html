@@ -1725,14 +1725,31 @@ const DEFAULT_SIDEBAR_VIEWS = [
   { id:'ideas', label:'Ideas', parent:'content' },
 ];
 
-function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onToggle, onClick, onRename, onDragStart, onDragOver, onDrop, onDragEnd, dragOverId }) {
+function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onToggle, onClick, onRename, onDragStart, onDragOver, onDrop, onDragEnd, dragOverId, onNestUnder, onUnnest, allTopLevel }) {
   const [editing, setEditing] = useState(false);
   const [editLabel, setEditLabel] = useState(view.label);
+  const [ctx, setCtx] = useState(null);
   const inputRef = useRef(null);
   useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [editing]);
   const saveRename = () => { if (editLabel.trim() && editLabel.trim() !== view.label) onRename(view.id, editLabel.trim()); setEditing(false); };
 
+  // Build context menu options
+  const ctxOptions = [
+    { icon:'✎', label:'Rename', action:() => { setEditing(true); setEditLabel(view.label); } },
+  ];
+  if (isChild) {
+    ctxOptions.push({ icon:'↑', label:'Move to top level', action:() => onUnnest(view.id) });
+  }
+  // Offer nesting under other top-level views
+  const nestTargets = (allTopLevel||[]).filter(t => t.id !== view.id && t.id !== view.parent);
+  if (nestTargets.length > 0 && !isChild) {
+    nestTargets.forEach(t => {
+      ctxOptions.push({ icon:'↳', label:`Nest under ${t.label}`, action:() => onNestUnder(view.id, t.id) });
+    });
+  }
+
   return (
+    <>
     <div
       draggable={!editing}
       onDragStart={e => { e.dataTransfer.setData('text/plain', view.id); onDragStart(view.id); }}
@@ -1741,6 +1758,7 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
       onDragEnd={onDragEnd}
       onClick={() => { if (!editing) onClick(view.id); }}
       onDoubleClick={e => { e.stopPropagation(); setEditing(true); setEditLabel(view.label); }}
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); }}
       style={{
         display:'flex', alignItems:'center', gap:'4px',
         padding: isChild ? '5px 10px 5px 28px' : '7px 10px',
@@ -1751,13 +1769,12 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
         transition:'background 0.1s, border-color 0.1s',
         borderLeft: dragOverId === view.id ? '2px solid var(--green)' : '2px solid transparent',
       }}>
-      {hasChildren && (
-        <span onClick={e => { e.stopPropagation(); onToggle(view.id); }}
-          style={{ fontSize:'10px', color:'var(--text-muted)', cursor:'pointer', width:'14px', textAlign:'center', transition:'transform 0.15s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink:0 }}>
-          ▸
-        </span>
-      )}
-      {!hasChildren && isChild && <span style={{ width:'14px', flexShrink:0 }} />}
+      <span onClick={e => { if(hasChildren){e.stopPropagation(); onToggle(view.id);} }}
+        style={{ fontSize:'13px', color: hasChildren ? 'var(--text-secondary)' : 'transparent', cursor: hasChildren ? 'pointer' : 'default', width:'18px', height:'18px', display:'inline-flex', alignItems:'center', justifyContent:'center', textAlign:'center', transition:'transform 0.15s, color 0.15s', transform: isExpanded && hasChildren ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink:0, userSelect:'none', borderRadius:'3px' }}
+        onMouseEnter={e => { if(hasChildren) e.currentTarget.style.color='var(--text)'; }}
+        onMouseLeave={e => { if(hasChildren) e.currentTarget.style.color='var(--text-secondary)'; }}>
+        {hasChildren ? '▸' : '·'}
+      </span>
       {editing ? (
         <input ref={inputRef} value={editLabel} onChange={e => setEditLabel(e.target.value)}
           onClick={e => e.stopPropagation()}
@@ -1768,6 +1785,8 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
         <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{view.label}</span>
       )}
     </div>
+    {ctx && <ContextMenu x={ctx.x} y={ctx.y} onClose={() => setCtx(null)} options={ctxOptions} />}
+    </>
   );
 }
 
@@ -1780,6 +1799,37 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
 
   const handleRename = (id, newLabel) => {
     setSidebarViews(prev => prev.map(v => v.id === id ? { ...v, label: newLabel } : v));
+  };
+
+  const handleUnnest = (childId) => {
+    setSidebarViews(prev => {
+      let views = prev.map(v => ({ ...v, children: [...(v.children||[])] }));
+      // Remove from parent's children
+      views = views.map(v => ({ ...v, children: (v.children||[]).filter(c => c !== childId) }));
+      // Make top-level
+      views = views.map(v => v.id === childId ? { ...v, parent: undefined } : v);
+      return views;
+    });
+  };
+
+  const handleNestUnder = (childId, parentId) => {
+    setSidebarViews(prev => {
+      let views = prev.map(v => ({ ...v, children: [...(v.children||[])] }));
+      // Remove from any old parent
+      views = views.map(v => ({ ...v, children: (v.children||[]).filter(c => c !== childId) }));
+      // Add to new parent + set parent field
+      views = views.map(v => v.id === parentId ? { ...v, children: [...(v.children||[]), childId] } : v);
+      views = views.map(v => v.id === childId ? { ...v, parent: parentId } : v);
+      return views;
+    });
+    setExpanded(prev => ({ ...prev, [parentId]: true }));
+  };
+
+  // Drop on "Views" header to unnest
+  const handleViewsHeaderDrop = (e) => {
+    e.preventDefault();
+    if (dragId) handleUnnest(dragId);
+    setDragId(null); setDragOverId(null);
   };
 
   const handleDrop = (targetId) => {
@@ -1843,7 +1893,11 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
         </div>
       </div>
       <div style={{ padding:'14px 10px 0', flex:1 }}>
-        <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--text-muted)',padding:'0 10px 6px' }}>Views</div>
+        <div onDragOver={e => { e.preventDefault(); setDragOverId('__views_header__'); }}
+          onDrop={handleViewsHeaderDrop}
+          style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color: dragOverId === '__views_header__' ? 'var(--green)' : 'var(--text-muted)',padding:'0 10px 6px',transition:'color 0.15s',borderRadius:'4px',background:dragOverId==='__views_header__'?'rgba(16,185,129,0.05)':'transparent' }}>
+          Views {dragId && <span style={{ fontSize:'9px',fontWeight:400,letterSpacing:'0.02em',opacity:0.7 }}>· drop here to unnest</span>}
+        </div>
         {topLevel.map(v => {
           const children = getChildren(v.id);
           const hasChildren = children.length > 0;
@@ -1855,7 +1909,7 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
                 isExpanded={isExp} hasChildren={hasChildren}
                 onToggle={toggleExpand} onClick={setActiveView} onRename={handleRename}
                 onDragStart={setDragId} onDragOver={setDragOverId} onDrop={handleDrop} onDragEnd={() => { setDragId(null); setDragOverId(null); }}
-                dragOverId={dragOverId}
+                dragOverId={dragOverId} onNestUnder={handleNestUnder} onUnnest={handleUnnest} allTopLevel={topLevel}
               />
               {hasChildren && isExp && children.map(child => (
                 <SidebarViewItem key={child.id}
@@ -1863,7 +1917,7 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
                   isExpanded={false} hasChildren={false}
                   onToggle={toggleExpand} onClick={setActiveView} onRename={handleRename}
                   onDragStart={setDragId} onDragOver={setDragOverId} onDrop={handleDrop} onDragEnd={() => { setDragId(null); setDragOverId(null); }}
-                  dragOverId={dragOverId}
+                  dragOverId={dragOverId} onNestUnder={handleNestUnder} onUnnest={handleUnnest} allTopLevel={topLevel}
                 />
               ))}
             </div>

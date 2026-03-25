@@ -766,11 +766,11 @@ function QuickLinks({ profileId, allLinks, setAllLinks }) {
         </a>
       ))}
       {adding ? (
-        <div style={{ display:'inline-flex',alignItems:'center',gap:'4px',padding:'4px 8px',background:'var(--surface)',border:'1px solid var(--border-light)',borderRadius:'16px',fontSize:'12px' }}>
-          <input ref={ir} value={nn} onChange={e=>setNn(e.target.value)} placeholder="Name" style={{ width:'60px',fontSize:'12px' }} />
-          <input value={nu} onChange={e=>setNu(e.target.value)} placeholder="URL" style={{ width:'100px',fontSize:'12px' }} onKeyDown={e=>{if(e.key==='Enter')add();if(e.key==='Escape')setAdding(false);}} />
-          <button onClick={add} style={{ background:'transparent',border:'none',color:'var(--green)',cursor:'pointer',fontSize:'14px',lineHeight:1,padding:'0 2px' }}>&check;</button>
-          <button onClick={()=>setAdding(false)} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'12px',lineHeight:1,padding:'0 2px' }}>&times;</button>
+        <div style={{ display:'inline-flex',alignItems:'center',gap:'6px',padding:'6px 12px',background:'var(--surface)',border:'1px solid var(--border-light)',borderRadius:'16px',fontSize:'12px' }}>
+          <input ref={ir} value={nn} onChange={e=>setNn(e.target.value)} placeholder="Name" style={{ width:'70px',fontSize:'12px',background:'transparent',border:'none',borderBottom:'1px solid var(--border)',outline:'none',color:'var(--text)',padding:'2px 0' }} />
+          <input value={nu} onChange={e=>setNu(e.target.value)} placeholder="https://..." style={{ width:'120px',fontSize:'12px',background:'transparent',border:'none',borderBottom:'1px solid var(--border)',outline:'none',color:'var(--text)',padding:'2px 0' }} onKeyDown={e=>{if(e.key==='Enter')add();if(e.key==='Escape')setAdding(false);}} />
+          <button onClick={add} style={{ background:'var(--green)',border:'none',color:'#fff',cursor:'pointer',fontSize:'11px',lineHeight:1,padding:'4px 8px',borderRadius:'4px',fontWeight:600 }}>Add</button>
+          <button onClick={()=>setAdding(false)} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,padding:'0 2px' }}>{'\u00D7'}</button>
         </div>
       ) : (
         <button onClick={()=>setAdding(true)} style={{ padding:'5px 10px',background:'transparent',border:'1px dashed var(--border-light)',borderRadius:'16px',cursor:'pointer',color:'var(--text-muted)',fontSize:'12px' }}>+ Add</button>

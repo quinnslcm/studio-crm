@@ -247,16 +247,16 @@ function AuthScreen({ onAuth }) {
         </div>
 
         <div style={{ ...fade(0.3) }}>
-          <div style={{ fontSize:'10px', fontWeight:600, letterSpacing:'0.12em', textTransform:'uppercase',
-            color:'#888', marginBottom:'12px', textDecoration:'underline', textUnderlineOffset:'3px' }}>
-            {mode === 'login' ? 'WORKSPACE LOGIN' : mode === 'signup' ? 'CREATE ACCOUNT' : 'PASSWORD RESET'}
+          <div style={{ fontSize:'clamp(28px, 4vw, 42px)', fontWeight:500, letterSpacing:'0.06em', color:'#1a1a1a',
+            lineHeight:1.1, marginBottom:'16px' }}>
+            {mode === 'login' ? 'workspace login.' : mode === 'signup' ? 'create account.' : 'password reset.'}
           </div>
           <div style={{ fontSize:'11px', color:'#999', lineHeight:1.6, maxWidth:'280px' }}>
             {mode === 'login'
-              ? 'SIGN IN TO ACCESS YOUR DEALS, CONTENT PIPELINE, AND PROJECT MANAGEMENT WORKSPACE.'
+              ? 'Access your deals, content pipeline, and project management workspace.'
               : mode === 'signup'
-              ? 'CREATE AN ACCOUNT TO SYNC YOUR DATA ACROSS DEVICES AND COLLABORATE WITH YOUR TEAM.'
-              : 'ENTER YOUR EMAIL AND WE\'LL SEND YOU A LINK TO RESET YOUR PASSWORD.'}
+              ? 'Create an account to sync your data across devices and collaborate with your team.'
+              : 'Enter your email and we\'ll send you a link to reset your password.'}
           </div>
         </div>
 
@@ -456,9 +456,17 @@ function LoadingScreen({ onDone }) {
       });
 
       // Draw percentage in center of cluster — monospace, code-like
+      // Draw percentage centered — clear a circle behind it so it cuts over dots
       const pctStr = String(Math.min(easedPct, 100)).padStart(3, '0');
-      const textOp = Math.min(formEase * 1.5, 0.22) * globalOpacity;
-      ctx.font = '600 11px "DM Sans", monospace';
+      const textOp = Math.min(formEase * 1.5, 0.7) * globalOpacity;
+      const clearR = 18;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, clearR, 0, Math.PI * 2);
+      ctx.fillStyle = '#f8f8fa';
+      ctx.fill();
+      ctx.restore();
+      ctx.font = '500 13px "DM Sans", monospace';
       ctx.fillStyle = `rgba(30,30,30,${textOp})`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';

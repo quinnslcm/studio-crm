@@ -40,10 +40,8 @@
     input, textarea { font-family: inherit; background: transparent; border: none; color: var(--text); outline: none; resize: none; }
     input::placeholder, textarea::placeholder { color: var(--text-muted); }
     button { font-family: inherit; }
-    .grid-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none;
-      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
-      background-size: 48px 48px; opacity: var(--grid-opacity);
-    }
+    .grid-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+    .grid-bg canvas { width: 100%; height: 100%; }
     .drop-target { outline: 2px dashed var(--border-light); outline-offset: -2px; border-radius: var(--radius); background: var(--drop-bg); }
     .card-dragging { opacity: 0.4; }
 
@@ -1458,67 +1456,310 @@ function ContactsView({ contacts, setContacts, activeProfile, setActiveProfile }
 }
 
 /* ── Calendar View ─────────────────────────────────────────────────────── */
-function CalendarView({ deals, content }) {
-  const today = new Date();
-  const year = today.getFullYear(); const month = today.getMonth();
+function CalendarView({ deals, content, activeProfile }) {
+  const realToday = new Date();
+  const [viewDate, setViewDate] = useState(new Date(realToday.getFullYear(), realToday.getMonth(), 1));
+  const [viewMode, setViewMode] = useState('month'); // month | week
+  const [calEvents, setCalEvents] = usePersistedState('studio-cal-events', []);
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [addingEvent, setAddingEvent] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newTime, setNewTime] = useState('09:00');
+  const [newEndTime, setNewEndTime] = useState('10:00');
+  const [newColor, setNewColor] = useState('var(--green)');
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const monthName = viewDate.toLocaleString('default', { month:'long', year:'numeric' });
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const monthName = today.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const todayDate = realToday.getDate();
+  const todayMonth = realToday.getMonth();
+  const todayYear = realToday.getFullYear();
+  const isCurrentMonth = month === todayMonth && year === todayYear;
 
-  // Build events from deals + content that have dueDate set
-  const events = {};
-  const addEvent = (day, title, color) => {
-    if (!events[day]) events[day] = [];
-    events[day].push({ title, color });
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+  const goToday = () => setViewDate(new Date(todayYear, todayMonth, 1));
+
+  // Week view helpers
+  const getWeekStart = () => {
+    const d = new Date(realToday);
+    d.setDate(d.getDate() - d.getDay());
+    return d;
   };
-  // Pull from all profiles
-  Object.entries(deals).forEach(([pid, ds]) => {
-    const c = PROFILE_COLORS[pid] || '#777';
-    ds.forEach(d => { if (d.dueDate) { const dd = new Date(d.dueDate); if (dd.getMonth() === month && dd.getFullYear() === year) addEvent(dd.getDate(), d.title.split('//')[0].trim(), c); }});
-  });
-  Object.entries(content).forEach(([pid, cs]) => {
-    const c = PROFILE_COLORS[pid] || '#777';
-    cs.forEach(item => { if (item.dueDate) { const dd = new Date(item.dueDate); if (dd.getMonth() === month && dd.getFullYear() === year) addEvent(dd.getDate(), item.title, c); }});
-  });
-  // Add some static fallback events if calendar is empty
-  const hasEvents = Object.keys(events).length > 0;
-  if (!hasEvents) {
-    addEvent(3, 'Nike sync', 'var(--cyan)');
-    addEvent(7, 'Podcast recording', 'var(--purple)');
-    addEvent(12, 'Culture mixer NYC', 'var(--cyan)');
-    addEvent(15, 'Spotify review', 'var(--green)');
-    addEvent(18, 'SXSW prep', 'var(--purple)');
-    addEvent(22, 'Adidas deliverables', 'var(--green)');
-    addEvent(24, 'Team standup', 'var(--orange)');
-    addEvent(28, 'Month-end review', 'var(--blue)');
-  }
+  const [weekStart, setWeekStart] = useState(getWeekStart());
+  const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d); };
+  const nextWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d); };
+  const weekDays = Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d; });
 
+  // Build all events (from deals, content, and custom)
+  const getAllEvents = (filterMonth, filterYear) => {
+    const evts = [];
+    // Custom events
+    calEvents.forEach(ev => {
+      const d = new Date(ev.date);
+      if (d.getMonth() === filterMonth && d.getFullYear() === filterYear) {
+        evts.push({ ...ev, day: d.getDate(), source: 'custom' });
+      }
+    });
+    // Deal events
+    Object.entries(deals).forEach(([pid, ds]) => {
+      const c = PROFILE_COLORS[pid] || '#777';
+      const pLabel = (PROFILES.find(p=>p.id===pid)||{}).label || pid;
+      ds.forEach(d => {
+        if (d.dueDate) {
+          const dd = new Date(d.dueDate);
+          if (dd.getMonth() === filterMonth && dd.getFullYear() === filterYear) {
+            evts.push({ id:'deal-'+d.id, title: d.title.split('//')[0].trim(), day: dd.getDate(), date: d.dueDate, time: '09:00', endTime: '10:00', color: c, source:'deal', profile: pLabel });
+          }
+        }
+      });
+    });
+    // Content events
+    Object.entries(content).forEach(([pid, cs]) => {
+      const c = PROFILE_COLORS[pid] || '#777';
+      const pLabel = (PROFILES.find(p=>p.id===pid)||{}).label || pid;
+      cs.forEach(item => {
+        if (item.dueDate) {
+          const dd = new Date(item.dueDate);
+          if (dd.getMonth() === filterMonth && dd.getFullYear() === filterYear) {
+            evts.push({ id:'content-'+item.id, title: item.title, day: dd.getDate(), date: item.dueDate, time: '10:00', endTime: '11:00', color: c, source:'content', profile: pLabel });
+          }
+        }
+      });
+    });
+    return evts;
+  };
+
+  const monthEvents = getAllEvents(month, year);
+  const getEventsForDay = (day) => monthEvents.filter(e => e.day === day);
+
+  // Get events for a specific date (week view)
+  const getEventsForDate = (date) => {
+    const m = date.getMonth(); const y = date.getFullYear(); const d = date.getDate();
+    return getAllEvents(m, y).filter(e => e.day === d);
+  };
+
+  // Hours for week view
+  const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7am to 8pm
+
+  // Add custom event
+  const addEvent = () => {
+    if (!newTitle.trim() || !selectedDay) return;
+    const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(selectedDay).padStart(2,'0');
+    const ev = { id: 'ev-' + Date.now(), title: newTitle.trim(), date: dateStr, time: newTime, endTime: newEndTime, color: newColor, profile: activeProfile };
+    setCalEvents(prev => [...prev, ev]);
+    setNewTitle(''); setAddingEvent(false); setNewTime('09:00'); setNewEndTime('10:00');
+  };
+
+  // Delete custom event
+  const deleteEvent = (evId) => { setCalEvents(prev => prev.filter(e => e.id !== evId)); setSelectedEvent(null); };
+
+  // Export to ICS
+  const exportICS = (ev) => {
+    const d = ev.date.replace(/-/g, '');
+    const t = (ev.time || '09:00').replace(':', '') + '00';
+    const et = (ev.endTime || '10:00').replace(':', '') + '00';
+    const ics = ['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT',
+      'DTSTART:'+d+'T'+t, 'DTEND:'+d+'T'+et,
+      'SUMMARY:'+ev.title, 'END:VEVENT','END:VCALENDAR'].join('\r\n');
+    const blob = new Blob([ics], { type:'text/calendar' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = ev.title.replace(/[^a-z0-9]/gi, '_') + '.ics'; a.click();
+  };
+
+  const eventColors = ['var(--green)','var(--purple)','var(--cyan)','var(--orange)','var(--blue)','var(--red)','var(--yellow)'];
+
+  // Month grid
   const cells = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  // Side panel for selected day
+  const dayPanel = selectedDay !== null;
+  const panelEvents = selectedDay ? getEventsForDay(selectedDay) : [];
+  const selectedDayName = selectedDay ? new Date(year, month, selectedDay).toLocaleDateString('default', { weekday:'long', month:'short', day:'numeric' }) : '';
 
   return (
-    <div style={{ flex:1,overflow:'auto',padding:'28px 32px' }}>
-      <h1 style={{ fontSize:'15px',fontWeight:600,marginBottom:'24px' }}>{monthName}</h1>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'1px',background:'var(--border)',borderRadius:'var(--radius)',overflow:'hidden' }}>
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-          <div key={d} style={{ padding:'8px',fontSize:'10px',fontWeight:600,letterSpacing:'0.04em',color:'var(--text-muted)',textTransform:'uppercase',background:'var(--surface)',textAlign:'center' }}>{d}</div>
-        ))}
-        {cells.map((day, i) => {
-          const isToday = day === today.getDate();
-          const dayEvents = events[day] || [];
-          return (
-            <div key={i} style={{ minHeight:'80px',padding:'6px 8px',background:'var(--bg)',position:'relative' }}>
-              {day && <>
-                <span style={{ fontSize:'12px',fontWeight:isToday?700:400,color:isToday?'var(--green)':'var(--text-secondary)',display:'inline-flex',alignItems:'center',justifyContent:'center',width:isToday?'22px':'auto',height:isToday?'22px':'auto',borderRadius:'50%',background:isToday?'var(--green)'+'20':'transparent' }}>{day}</span>
-                {dayEvents.map((ev,j) => (
-                  <div key={j} style={{ fontSize:'10px',fontWeight:500,padding:'2px 5px',marginTop:'3px',borderRadius:'3px',background:ev.color+'15',color:ev.color,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{ev.title}</div>
-                ))}
-              </>}
+    <div style={{ flex:1,display:'flex',overflow:'hidden' }}>
+      {/* Main calendar area */}
+      <div style={{ flex:1,overflow:'auto',padding:'28px 32px',display:'flex',flexDirection:'column' }}>
+        {/* Header */}
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'20px' }}>
+          <div style={{ display:'flex',alignItems:'center',gap:'16px' }}>
+            <h1 style={{ fontSize:'18px',fontWeight:600,minWidth:'200px' }}>{monthName}</h1>
+            <div style={{ display:'flex',gap:'4px' }}>
+              <button onClick={viewMode==='month'?prevMonth:prevWeek} style={{ padding:'5px 10px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&lsaquo;</button>
+              <button onClick={goToday} style={{ padding:'5px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text)',cursor:'pointer',fontSize:'12px',fontWeight:500 }}>Today</button>
+              <button onClick={viewMode==='month'?nextMonth:nextWeek} style={{ padding:'5px 10px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',cursor:'pointer',fontSize:'13px' }}>&rsaquo;</button>
             </div>
-          );
-        })}
+          </div>
+          <div style={{ display:'flex',gap:'0',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',overflow:'hidden' }}>
+            <button onClick={() => setViewMode('month')} style={{ padding:'6px 14px',background:viewMode==='month'?'var(--surface)':'transparent',border:'none',color:viewMode==='month'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'12px',fontWeight:500 }}>Month</button>
+            <button onClick={() => setViewMode('week')} style={{ padding:'6px 14px',background:viewMode==='week'?'var(--surface)':'transparent',border:'none',borderLeft:'1px solid var(--border)',color:viewMode==='week'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'12px',fontWeight:500 }}>Week</button>
+          </div>
+        </div>
+
+        {viewMode === 'month' ? (
+          /* ── Month View ── */
+          <div style={{ flex:1,display:'flex',flexDirection:'column' }}>
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'1px',background:'var(--border)',borderRadius:'var(--radius)',overflow:'hidden',flex:1 }}>
+              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                <div key={d} style={{ padding:'8px',fontSize:'10px',fontWeight:600,letterSpacing:'0.04em',color:'var(--text-muted)',textTransform:'uppercase',background:'var(--surface)',textAlign:'center' }}>{d}</div>
+              ))}
+              {cells.map((day, i) => {
+                const isToday = isCurrentMonth && day === todayDate;
+                const dayEvts = day ? getEventsForDay(day) : [];
+                const isSelected = day === selectedDay;
+                return (
+                  <div key={i} onClick={() => { if(day) { setSelectedDay(day); setSelectedEvent(null); } }}
+                    style={{ minHeight:'90px',padding:'6px 8px',background:isSelected?'var(--surface-hover)':isToday?'rgba(var(--glow-rgb),0.03)':'var(--bg)',cursor:day?'pointer':'default',transition:'background 0.15s',position:'relative',borderLeft:isSelected?'2px solid var(--green)':'2px solid transparent' }}
+                    onMouseEnter={e => { if(day && !isSelected) e.currentTarget.style.background='var(--surface-hover)'; }}
+                    onMouseLeave={e => { if(day && !isSelected) e.currentTarget.style.background=isToday?'rgba(var(--glow-rgb),0.03)':'var(--bg)'; }}>
+                    {day && <>
+                      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'3px' }}>
+                        <span style={{ fontSize:'12px',fontWeight:isToday?700:400,color:isToday?'var(--green)':'var(--text-secondary)',display:'inline-flex',alignItems:'center',justifyContent:'center',width:'22px',height:'22px',borderRadius:'50%',background:isToday?'var(--green)20':'transparent' }}>{day}</span>
+                        {dayEvts.length > 0 && <span style={{ fontSize:'9px',color:'var(--text-muted)' }}>{dayEvts.length}</span>}
+                      </div>
+                      {dayEvts.slice(0, 3).map((ev,j) => (
+                        <div key={j} onClick={e => { e.stopPropagation(); setSelectedEvent(ev); setSelectedDay(day); }}
+                          style={{ fontSize:'10px',fontWeight:500,padding:'2px 5px',marginTop:'2px',borderRadius:'3px',borderLeft:'2px solid '+ev.color,background:ev.color+'10',color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',cursor:'pointer',transition:'background 0.15s' }}
+                          onMouseEnter={e => e.currentTarget.style.background=ev.color+'22'}
+                          onMouseLeave={e => e.currentTarget.style.background=ev.color+'10'}>
+                          <span style={{ color:ev.color,marginRight:'4px',fontSize:'9px' }}>{ev.time || ''}</span>{ev.title}
+                        </div>
+                      ))}
+                      {dayEvts.length > 3 && <div style={{ fontSize:'9px',color:'var(--text-muted)',marginTop:'2px',paddingLeft:'4px' }}>+{dayEvts.length-3} more</div>}
+                    </>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* ── Week View ── */
+          <div style={{ flex:1,overflow:'auto',display:'flex',flexDirection:'column' }}>
+            {/* Week day headers */}
+            <div style={{ display:'grid',gridTemplateColumns:'50px repeat(7,1fr)',gap:'1px',background:'var(--border)',borderRadius:'var(--radius) var(--radius) 0 0',overflow:'hidden' }}>
+              <div style={{ background:'var(--surface)',padding:'8px' }} />
+              {weekDays.map((d, i) => {
+                const isToday = d.getDate()===todayDate && d.getMonth()===todayMonth && d.getFullYear()===todayYear;
+                return (
+                  <div key={i} style={{ padding:'8px',background:'var(--surface)',textAlign:'center' }}>
+                    <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.04em',color:'var(--text-muted)',textTransform:'uppercase' }}>{d.toLocaleDateString('default',{weekday:'short'})}</div>
+                    <div style={{ fontSize:'18px',fontWeight:isToday?700:400,color:isToday?'var(--green)':'var(--text)',marginTop:'2px' }}>{d.getDate()}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Time grid */}
+            <div style={{ flex:1,overflow:'auto',display:'grid',gridTemplateColumns:'50px repeat(7,1fr)',gap:'1px',background:'var(--border)',borderRadius:'0 0 var(--radius) var(--radius)' }}>
+              {hours.map(h => (
+                <React.Fragment key={h}>
+                  <div style={{ padding:'4px 6px',fontSize:'10px',color:'var(--text-muted)',background:'var(--surface)',textAlign:'right',height:'48px' }}>{h>12?(h-12)+'pm':h===12?'12pm':h+'am'}</div>
+                  {weekDays.map((d, di) => {
+                    const dayEvts = getEventsForDate(d);
+                    const hourEvts = dayEvts.filter(ev => { const t = parseInt((ev.time||'09:00').split(':')[0]); return t === h; });
+                    return (
+                      <div key={di} onClick={() => { setSelectedDay(d.getDate()); setViewDate(new Date(d.getFullYear(), d.getMonth(), 1)); }}
+                        style={{ background:'var(--bg)',height:'48px',padding:'2px',cursor:'pointer',position:'relative' }}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--surface-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background='var(--bg)'}>
+                        {hourEvts.map((ev, ei) => (
+                          <div key={ei} onClick={e => { e.stopPropagation(); setSelectedEvent(ev); setSelectedDay(d.getDate()); setViewDate(new Date(d.getFullYear(), d.getMonth(), 1)); }}
+                            style={{ fontSize:'10px',fontWeight:500,padding:'3px 5px',borderRadius:'3px',borderLeft:'2px solid '+ev.color,background:ev.color+'15',color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer',marginBottom:'1px' }}>
+                            {ev.title}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ── Day detail side panel ── */}
+      {dayPanel && (
+        <div style={{ width:'300px',minWidth:'300px',borderLeft:'1px solid var(--border)',background:'var(--surface)',padding:'20px',overflow:'auto',display:'flex',flexDirection:'column' }}>
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'18px' }}>
+            <div>
+              <div style={{ fontSize:'14px',fontWeight:600 }}>{selectedDayName}</div>
+              <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'2px' }}>{panelEvents.length} event{panelEvents.length!==1?'s':''}</div>
+            </div>
+            <button onClick={() => { setSelectedDay(null); setSelectedEvent(null); }} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'16px' }}>&times;</button>
+          </div>
+
+          {/* Event list */}
+          {panelEvents.map(ev => (
+            <div key={ev.id} onClick={() => setSelectedEvent(selectedEvent && selectedEvent.id===ev.id ? null : ev)}
+              style={{ padding:'10px 12px',background:selectedEvent && selectedEvent.id===ev.id?ev.color+'12':'var(--bg)',border:'1px solid '+(selectedEvent && selectedEvent.id===ev.id?ev.color+'30':'var(--border)'),borderRadius:'var(--radius-sm)',marginBottom:'6px',cursor:'pointer',transition:'all 0.15s' }}>
+              <div style={{ display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px' }}>
+                <span style={{ width:'6px',height:'6px',borderRadius:'50%',background:ev.color }} />
+                <span style={{ fontSize:'12px',fontWeight:500,flex:1 }}>{ev.title}</span>
+              </div>
+              <div style={{ fontSize:'11px',color:'var(--text-muted)',paddingLeft:'14px' }}>{ev.time || '09:00'} - {ev.endTime || '10:00'}</div>
+              {ev.profile && <div style={{ fontSize:'10px',color:'var(--text-muted)',paddingLeft:'14px',marginTop:'2px' }}>{typeof ev.profile === 'string' && PROFILES.find(p=>p.id===ev.profile) ? PROFILES.find(p=>p.id===ev.profile).label : ev.profile}</div>}
+
+              {/* Expanded event detail */}
+              {selectedEvent && selectedEvent.id === ev.id && (
+                <div style={{ marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--border)',display:'flex',gap:'6px',flexWrap:'wrap' }}>
+                  <button onClick={e => { e.stopPropagation(); exportICS(ev); }} style={{ padding:'4px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'10px',cursor:'pointer' }}>Export .ics</button>
+                  {ev.source === 'custom' && (
+                    <button onClick={e => { e.stopPropagation(); deleteEvent(ev.id); }} style={{ padding:'4px 10px',background:'transparent',border:'1px solid var(--red)',borderRadius:'var(--radius-sm)',color:'var(--red)',fontSize:'10px',cursor:'pointer' }}>Delete</button>
+                  )}
+                  <div style={{ fontSize:'10px',color:'var(--text-muted)',width:'100%',marginTop:'4px' }}>{ev.source === 'deal' ? 'From deals' : ev.source === 'content' ? 'From content' : 'Custom event'}</div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {panelEvents.length === 0 && !addingEvent && (
+            <div style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-muted)',fontSize:'12px' }}>No events</div>
+          )}
+
+          {/* Add event form */}
+          {addingEvent ? (
+            <div style={{ marginTop:'auto',padding:'14px',background:'var(--bg)',border:'1px dashed var(--green)',borderRadius:'var(--radius-sm)' }}>
+              <div style={{ fontSize:'11px',fontWeight:600,color:'var(--text-muted)',marginBottom:'10px' }}>NEW EVENT</div>
+              <input autoFocus value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="Event title..."
+                onKeyDown={e => { if(e.key==='Enter') addEvent(); if(e.key==='Escape') setAddingEvent(false); }}
+                style={{ fontSize:'13px',width:'100%',padding:'6px 8px',background:'var(--surface)',borderRadius:'4px',border:'1px solid var(--border)',marginBottom:'8px' }} />
+              <div style={{ display:'flex',gap:'8px',marginBottom:'8px' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:'10px',color:'var(--text-muted)',marginBottom:'4px' }}>Start</div>
+                  <input type="time" value={newTime} onChange={e=>setNewTime(e.target.value)}
+                    style={{ fontSize:'12px',width:'100%',padding:'4px 6px',background:'var(--surface)',borderRadius:'4px',border:'1px solid var(--border)',colorScheme:'dark' }} />
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:'10px',color:'var(--text-muted)',marginBottom:'4px' }}>End</div>
+                  <input type="time" value={newEndTime} onChange={e=>setNewEndTime(e.target.value)}
+                    style={{ fontSize:'12px',width:'100%',padding:'4px 6px',background:'var(--surface)',borderRadius:'4px',border:'1px solid var(--border)',colorScheme:'dark' }} />
+                </div>
+              </div>
+              <div style={{ display:'flex',gap:'4px',marginBottom:'10px' }}>
+                {eventColors.map(c => (
+                  <button key={c} onClick={() => setNewColor(c)}
+                    style={{ width:'18px',height:'18px',borderRadius:'50%',background:c,border:c===newColor?'2px solid var(--text)':'2px solid transparent',cursor:'pointer',padding:0 }} />
+                ))}
+              </div>
+              <div style={{ display:'flex',gap:'6px' }}>
+                <button onClick={addEvent} style={{ flex:1,padding:'6px',background:'var(--green)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'12px',fontWeight:600,cursor:'pointer' }}>Add Event</button>
+                <button onClick={() => { setAddingEvent(false); setNewTitle(''); }} style={{ padding:'6px 12px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-muted)',fontSize:'12px',cursor:'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setAddingEvent(true)}
+              style={{ marginTop:'auto',padding:'10px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'12px',cursor:'pointer',width:'100%',textAlign:'center' }}>+ Add event</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2018,6 +2259,112 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
   );
 }
 
+/* ── Interactive Grid Background ───────────────────────────────────────── */
+function InteractiveGrid() {
+  const canvasRef = useRef(null);
+  const mouseRef = useRef({ x: -1000, y: -1000 });
+  const animRef = useRef(null);
+  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const spacing = 48;
+    const crossSize = 4;
+
+    const resize = () => {
+      canvas.width = window.innerWidth * window.devicePixelRatio;
+      canvas.height = window.innerHeight * window.devicePixelRatio;
+      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const handleMouse = (e) => { mouseRef.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener('mousemove', handleMouse);
+
+    const draw = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const mx = mouseRef.current.x;
+      const my = mouseRef.current.y;
+      const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+      const baseAlpha = isDark ? 0.12 : 0.08;
+      const glowRadius = 180;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw grid lines (very subtle)
+      for (let x = 0; x <= w; x += spacing) {
+        const dist = Math.abs(x - mx);
+        const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.25 : 0;
+        const alpha = baseAlpha * 0.4 + glow;
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= h; y += spacing) {
+        const dist = Math.abs(y - my);
+        const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.25 : 0;
+        const alpha = baseAlpha * 0.4 + glow;
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      // Draw crosshair marks at intersections
+      for (let x = 0; x <= w; x += spacing) {
+        for (let y = 0; y <= h; y += spacing) {
+          const dx = x - mx;
+          const dy = y - my;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const glow = dist < glowRadius ? (1 - dist / glowRadius) : 0;
+          const alpha = baseAlpha + glow * 0.55;
+          const size = crossSize + glow * 2;
+
+          ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
+          ctx.lineWidth = glow > 0.3 ? 1.2 : 0.8;
+
+          // Horizontal tick
+          ctx.beginPath();
+          ctx.moveTo(x - size, y);
+          ctx.lineTo(x + size, y);
+          ctx.stroke();
+
+          // Vertical tick
+          ctx.beginPath();
+          ctx.moveTo(x, y - size);
+          ctx.lineTo(x, y + size);
+          ctx.stroke();
+        }
+      }
+
+      animRef.current = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('mousemove', handleMouse);
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, []);
+
+  return (
+    <div className="grid-bg" style={{ pointerEvents:'none' }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
+}
+
 /* ── App ───────────────────────────────────────────────────────────────── */
 function App() {
   const [loading, setLoading] = useState(true);
@@ -2071,13 +2418,13 @@ function App() {
 
   return (
     <div style={{ display:'flex',height:'100vh',position:'relative',transition:'background 0.3s ease, color 0.3s ease' }}>
-      <div className="grid-bg" />
+      <InteractiveGrid />
       <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} activeProfile={activeProfile} setActiveProfile={setActiveProfile} profileCounts={(() => { const c = {}; PROFILES.forEach(p => { c[p.id] = (deals[p.id]||[]).length + (content[p.id]||[]).length + (ideas[p.id]||[]).length; }); return c; })()} />
       {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} />}
       {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} />}
       {activeView === 'ideas' && <IdeasView ideas={ideas} setIdeas={setIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} />}
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
-      {activeView === 'calendar' && <CalendarView deals={deals} content={content} />}
+      {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
       {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} />}
       {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} onArchive={handleArchiveCard} />}

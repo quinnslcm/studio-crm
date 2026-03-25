@@ -1912,26 +1912,40 @@ function ContactsView({ contacts, setContacts, activeProfile, setActiveProfile }
   const [filterProfile, setFilterProfile] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
   const [editContact, setEditContact] = useState(null);
+  const [viewMode, setViewMode] = useState('list'); // list | grid
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
   const profileCounts = { all: contacts.length };
   PROFILES.forEach(p => { profileCounts[p.id] = contacts.filter(c => (c.profiles||[c.profile]).includes(p.id)).length; });
   const filtered = contacts.filter(c => {
-    const matchSearch = (c.name+c.role+c.email).toLowerCase().includes(search.toLowerCase());
+    const matchSearch = (c.name+c.role+c.email+(c.company||'')).toLowerCase().includes(search.toLowerCase());
     const matchProfile = filterProfile === 'all' || (c.profiles||[c.profile]).includes(filterProfile);
     return matchSearch && matchProfile;
+  }).sort((a, b) => {
+    const aVal = (a[sortBy] || '').toLowerCase();
+    const bVal = (b[sortBy] || '').toLowerCase();
+    return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
   });
   const addContact = (contact) => setContacts(prev => [...prev, contact]);
   const removeContact = (id) => setContacts(prev => prev.filter(c => c.id !== id));
   const updateContact = (updated) => setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
+  const toggleSort = (col) => { if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy(col); setSortDir('asc'); } };
+  const SortArrow = ({ col }) => sortBy === col ? <span style={{ marginLeft:'4px',fontSize:'10px' }}>{sortDir==='asc'?'\u25B2':'\u25BC'}</span> : null;
 
   return (
     <div style={{ flex:1,overflow:'auto',padding:'28px 32px' }}>
       <div style={{ marginBottom:'20px' }}>
         <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px' }}>
-          <h1 style={{ fontSize:'15px',fontWeight:600 }}>Contacts</h1>
+          <h1 style={{ fontSize:'15px',fontWeight:600 }}>Contacts <span style={{ fontWeight:400,color:'var(--text-muted)',fontSize:'13px',marginLeft:'6px' }}>{filtered.length}</span></h1>
           <div style={{ display:'flex',gap:'8px',alignItems:'center' }}>
             <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 12px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)',width:'200px' }}>
               <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." style={{ fontSize:'12px',width:'100%' }} />
+            </div>
+            {/* View toggle */}
+            <div style={{ display:'flex',gap:'0',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',overflow:'hidden' }}>
+              <button onClick={()=>setViewMode('list')} style={{ padding:'6px 10px',background:viewMode==='list'?'var(--surface)':'transparent',border:'none',color:viewMode==='list'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'13px' }} title="List view">&#9776;</button>
+              <button onClick={()=>setViewMode('grid')} style={{ padding:'6px 10px',background:viewMode==='grid'?'var(--surface)':'transparent',border:'none',borderLeft:'1px solid var(--border)',color:viewMode==='grid'?'var(--text)':'var(--text-muted)',cursor:'pointer',fontSize:'13px' }} title="Grid view">&#9638;&#9638;</button>
             </div>
             <button onClick={()=>setShowAdd(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ Add Contact</button>
           </div>
@@ -1964,15 +1978,67 @@ function ContactsView({ contacts, setContacts, activeProfile, setActiveProfile }
           })}
         </div>
       </div>
-      <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:'10px' }}>
-        {filtered.map(c => {
-          const profileList = c.profiles || [c.profile];
-          const primaryColor = PROFILE_COLORS[profileList[0]] || '#777';
-          return (
-            <ContactCard key={c.id} contact={c} profileList={profileList} primaryColor={primaryColor} onEdit={()=>setEditContact(c)} onDelete={()=>removeContact(c.id)} />
-          );
-        })}
-      </div>
+
+      {viewMode === 'list' ? (
+        /* ── List View ── */
+        <div style={{ border:'1px solid var(--border)',borderRadius:'var(--radius)',overflow:'hidden' }}>
+          {/* Table header */}
+          <div style={{ display:'grid',gridTemplateColumns:'2fr 1.5fr 2fr 1.5fr 40px',gap:'1px',background:'var(--surface)',borderBottom:'1px solid var(--border)',padding:'0' }}>
+            {[{col:'name',label:'Name'},{col:'role',label:'Role'},{col:'email',label:'Email'},{col:'company',label:'Company'}].map(({col,label}) => (
+              <button key={col} onClick={()=>toggleSort(col)} style={{ padding:'10px 14px',background:'transparent',border:'none',color:'var(--text-muted)',fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center' }}>
+                {label}<SortArrow col={col} />
+              </button>
+            ))}
+            <div />
+          </div>
+          {/* Table rows */}
+          {filtered.length === 0 ? (
+            <div style={{ padding:'40px',textAlign:'center',color:'var(--text-muted)',fontSize:'13px' }}>No contacts found</div>
+          ) : filtered.map((c, idx) => {
+            const profileList = c.profiles || [c.profile];
+            const primaryColor = PROFILE_COLORS[profileList[0]] || '#777';
+            return (
+              <div key={c.id} onClick={()=>setEditContact(c)}
+                style={{ display:'grid',gridTemplateColumns:'2fr 1.5fr 2fr 1.5fr 40px',gap:'1px',borderBottom:idx<filtered.length-1?'1px solid var(--border)':'none',cursor:'pointer',background:'var(--bg)',transition:'background 0.1s' }}
+                onMouseEnter={e=>e.currentTarget.style.background='var(--surface-hover)'}
+                onMouseLeave={e=>e.currentTarget.style.background='var(--bg)'}>
+                <div style={{ padding:'11px 14px',display:'flex',alignItems:'center',gap:'10px' }}>
+                  <div style={{ width:'28px',height:'28px',borderRadius:'50%',background:primaryColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'11px',fontWeight:600,color:primaryColor,flexShrink:0 }}>
+                    {c.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:'13px',fontWeight:500 }}>{c.name}</div>
+                    <div style={{ display:'flex',gap:'4px',marginTop:'2px' }}>
+                      {profileList.map(pid => (
+                        <span key={pid} style={{ width:'5px',height:'5px',borderRadius:'50%',background:PROFILE_COLORS[pid]||'#777' }} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding:'11px 14px',fontSize:'12px',color:'var(--text-secondary)',display:'flex',alignItems:'center' }}>{c.role || '—'}</div>
+                <div style={{ padding:'11px 14px',fontSize:'12px',color:'var(--text-secondary)',display:'flex',alignItems:'center' }}>{c.email || '—'}</div>
+                <div style={{ padding:'11px 14px',fontSize:'12px',color:'var(--text-secondary)',display:'flex',alignItems:'center' }}>{c.company || '—'}</div>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'center' }}>
+                  <button onClick={e=>{e.stopPropagation();if(confirm('Delete '+c.name+'?'))removeContact(c.id);}} style={{ background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',padding:'4px' }}
+                    onMouseEnter={e=>e.currentTarget.style.color='var(--red)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>&times;</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── Grid View ── */
+        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:'10px' }}>
+          {filtered.map(c => {
+            const profileList = c.profiles || [c.profile];
+            const primaryColor = PROFILE_COLORS[profileList[0]] || '#777';
+            return (
+              <ContactCard key={c.id} contact={c} profileList={profileList} primaryColor={primaryColor} onEdit={()=>setEditContact(c)} onDelete={()=>removeContact(c.id)} />
+            );
+          })}
+        </div>
+      )}
+
       {showAdd && <AddContactModal onClose={()=>setShowAdd(false)} onSave={addContact} />}
       {editContact && <EditContactModal contact={editContact} onClose={()=>setEditContact(null)} onSave={updated => { updateContact(updated); setEditContact(null); }} />}
     </div>
@@ -1980,7 +2046,7 @@ function ContactsView({ contacts, setContacts, activeProfile, setActiveProfile }
 }
 
 /* ── Calendar View ─────────────────────────────────────────────────────── */
-function CalendarView({ deals, content, activeProfile }) {
+function CalendarView({ deals, content, activeProfile, contacts }) {
   const realToday = new Date();
   const [viewDate, setViewDate] = useState(new Date(realToday.getFullYear(), realToday.getMonth(), 1));
   const [viewMode, setViewMode] = useState('month'); // month | week
@@ -1993,6 +2059,14 @@ function CalendarView({ deals, content, activeProfile }) {
   const [newColor, setNewColor] = useState('var(--green)');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [attendees, setAttendees] = useState([]);
+  const [attendeeSearch, setAttendeeSearch] = useState('');
+  const [showAttendeeDropdown, setShowAttendeeDropdown] = useState(false);
+  const allContacts = contacts || [];
+  const filteredContacts = attendeeSearch.trim() ? allContacts.filter(c =>
+    (c.name+c.email+c.role).toLowerCase().includes(attendeeSearch.toLowerCase()) &&
+    !attendees.find(a => a.id === c.id)
+  ).slice(0, 5) : [];
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -2074,9 +2148,9 @@ function CalendarView({ deals, content, activeProfile }) {
   const addEvent = () => {
     if (!newTitle.trim() || !selectedDay) return;
     const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(selectedDay).padStart(2,'0');
-    const ev = { id: 'ev-' + Date.now(), title: newTitle.trim(), date: dateStr, time: newTime, endTime: newEndTime, color: newColor, profile: activeProfile };
+    const ev = { id: 'ev-' + Date.now(), title: newTitle.trim(), date: dateStr, time: newTime, endTime: newEndTime, color: newColor, profile: activeProfile, attendees: attendees.map(a => ({ id:a.id, name:a.name, email:a.email })) };
     setCalEvents(prev => [...prev, ev]);
-    setNewTitle(''); setAddingEvent(false); setNewTime('09:00'); setNewEndTime('10:00');
+    setNewTitle(''); setAddingEvent(false); setNewTime('09:00'); setNewEndTime('10:00'); setAttendees([]); setAttendeeSearch('');
   };
 
   // Delete custom event
@@ -2233,12 +2307,26 @@ function CalendarView({ deals, content, activeProfile }) {
 
               {/* Expanded event detail */}
               {selectedEvent && selectedEvent.id === ev.id && (
-                <div style={{ marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--border)',display:'flex',gap:'6px',flexWrap:'wrap' }}>
-                  <button onClick={e => { e.stopPropagation(); exportICS(ev); }} style={{ padding:'4px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'10px',cursor:'pointer' }}>Export .ics</button>
-                  {ev.source === 'custom' && (
-                    <button onClick={e => { e.stopPropagation(); deleteEvent(ev.id); }} style={{ padding:'4px 10px',background:'transparent',border:'1px solid var(--red)',borderRadius:'var(--radius-sm)',color:'var(--red)',fontSize:'10px',cursor:'pointer' }}>Delete</button>
+                <div style={{ marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--border)' }}>
+                  {ev.attendees && ev.attendees.length > 0 && (
+                    <div style={{ marginBottom:'8px' }}>
+                      <div style={{ fontSize:'10px',color:'var(--text-muted)',marginBottom:'4px' }}>Attendees</div>
+                      <div style={{ display:'flex',flexWrap:'wrap',gap:'4px' }}>
+                        {ev.attendees.map((a,i) => (
+                          <span key={i} style={{ display:'inline-flex',alignItems:'center',gap:'4px',padding:'2px 8px',background:'var(--surface-hover)',borderRadius:'10px',fontSize:'10px' }}>
+                            {a.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                  <div style={{ fontSize:'10px',color:'var(--text-muted)',width:'100%',marginTop:'4px' }}>{ev.source === 'deal' ? 'From deals' : ev.source === 'content' ? 'From content' : 'Custom event'}</div>
+                  <div style={{ display:'flex',gap:'6px',flexWrap:'wrap' }}>
+                    <button onClick={e => { e.stopPropagation(); exportICS(ev); }} style={{ padding:'4px 10px',background:'transparent',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'10px',cursor:'pointer' }}>Export .ics</button>
+                    {ev.source === 'custom' && (
+                      <button onClick={e => { e.stopPropagation(); deleteEvent(ev.id); }} style={{ padding:'4px 10px',background:'transparent',border:'1px solid var(--red)',borderRadius:'var(--radius-sm)',color:'var(--red)',fontSize:'10px',cursor:'pointer' }}>Delete</button>
+                    )}
+                    <div style={{ fontSize:'10px',color:'var(--text-muted)',width:'100%',marginTop:'4px' }}>{ev.source === 'deal' ? 'From deals' : ev.source === 'content' ? 'From content' : 'Custom event'}</div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2272,6 +2360,44 @@ function CalendarView({ deals, content, activeProfile }) {
                   <button key={c} onClick={() => setNewColor(c)}
                     style={{ width:'18px',height:'18px',borderRadius:'50%',background:c,border:c===newColor?'2px solid var(--text)':'2px solid transparent',cursor:'pointer',padding:0 }} />
                 ))}
+              </div>
+              {/* Attendee picker */}
+              <div style={{ marginBottom:'10px' }}>
+                <div style={{ fontSize:'10px',color:'var(--text-muted)',marginBottom:'4px' }}>Attendees</div>
+                {attendees.length > 0 && (
+                  <div style={{ display:'flex',flexWrap:'wrap',gap:'4px',marginBottom:'6px' }}>
+                    {attendees.map(a => (
+                      <span key={a.id} style={{ display:'inline-flex',alignItems:'center',gap:'4px',padding:'3px 8px',background:'var(--surface-hover)',borderRadius:'12px',fontSize:'11px' }}>
+                        {a.name}
+                        <button onClick={() => setAttendees(prev => prev.filter(x => x.id !== a.id))} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'12px',padding:0,lineHeight:1 }}>&times;</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ position:'relative' }}>
+                  <input value={attendeeSearch} onChange={e => { setAttendeeSearch(e.target.value); setShowAttendeeDropdown(true); }}
+                    onFocus={() => setShowAttendeeDropdown(true)}
+                    placeholder="Search contacts to add..."
+                    style={{ fontSize:'12px',width:'100%',padding:'5px 8px',background:'var(--surface)',borderRadius:'4px',border:'1px solid var(--border)' }} />
+                  {showAttendeeDropdown && filteredContacts.length > 0 && (
+                    <div style={{ position:'absolute',top:'100%',left:0,right:0,background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',marginTop:'2px',zIndex:10,maxHeight:'150px',overflow:'auto' }}>
+                      {filteredContacts.map(c => (
+                        <div key={c.id} onClick={() => { setAttendees(prev => [...prev, c]); setAttendeeSearch(''); setShowAttendeeDropdown(false); }}
+                          style={{ padding:'7px 10px',cursor:'pointer',display:'flex',alignItems:'center',gap:'8px',transition:'background 0.1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background='var(--surface-hover)'}
+                          onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                          <div style={{ width:'22px',height:'22px',borderRadius:'50%',background:PROFILE_COLORS[(c.profiles||[c.profile])[0]]+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'9px',fontWeight:600,color:PROFILE_COLORS[(c.profiles||[c.profile])[0]] }}>
+                            {c.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontSize:'12px',fontWeight:500 }}>{c.name}</div>
+                            <div style={{ fontSize:'10px',color:'var(--text-muted)' }}>{c.email || c.role || ''}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div style={{ display:'flex',gap:'6px' }}>
                 <button onClick={addEvent} style={{ flex:1,padding:'6px',background:'var(--green)',border:'none',borderRadius:'var(--radius-sm)',color:'#fff',fontSize:'12px',fontWeight:600,cursor:'pointer' }}>Add Event</button>
@@ -3027,7 +3153,7 @@ function App() {
       {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} customLabels={customLabels.content || CONTENT_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, content: { ...prev.content, [stage]: name } }))} />}
       {activeView === 'ideas' && <IdeasView ideas={ideas} setIdeas={setIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} ideaFolders={ideaFolders} setIdeaFolders={setIdeaFolders} />}
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
-      {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} />}
+      {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} contacts={contacts} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
       {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} user={user} onLogout={async () => { if (sb) await sb.auth.signOut(); setUser(null); setAuthed(false); }} />}
       {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} onArchive={handleArchiveCard} />}

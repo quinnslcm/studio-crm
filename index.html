@@ -122,46 +122,37 @@ const sb = sbLib && sbLib.createClient ? sbLib.createClient(SUPABASE_URL, SUPABA
 
 /* ── Supabase-backed persisted state hook ─────────────────────────── */
 // Falls back to localStorage if not authenticated or table doesn't exist yet
-function useSupabaseState(key, table, defaultVal) {
+function useSupabaseState(key, defaultVal, user) {
+  const table = 'user_data';
   const [data, setData] = useState(() => {
     try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : (typeof defaultVal === 'function' ? defaultVal() : defaultVal); }
     catch { return typeof defaultVal === 'function' ? defaultVal() : defaultVal; }
   });
-  const [user, setUser] = useState(null);
   const [synced, setSynced] = useState(false);
+  const userRef = useRef(user);
+  userRef.current = user;
 
-  // Check auth on mount
+  // Load from Supabase when user available
   useEffect(() => {
-    if (!sb) return;
-    sb.auth.getUser().then(({ data: d }) => { if (d && d.user) setUser(d.user); });
-    const { data: listener } = sb.auth.onAuthStateChange((_, session) => {
-      setUser(session && session.user ? session.user : null);
-    });
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  // Load from Supabase when user logs in
-  useEffect(() => {
-    if (!user || synced) return;
+    if (!sb || !user || synced) return;
     sb.from(table).select('data').eq('user_id', user.id).eq('key', key).single()
-      .then(({ data: row, error }) => {
+      .then(({ data: row }) => {
         if (row && row.data) { setData(row.data); localStorage.setItem(key, JSON.stringify(row.data)); }
         setSynced(true);
       });
-  }, [user, synced, table, key]);
+  }, [user, synced, key]);
 
   // Save to both localStorage and Supabase
   const setAndSync = useCallback((updater) => {
     setData(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       localStorage.setItem(key, JSON.stringify(next));
-      // Async save to Supabase if authenticated
-      if (user) {
-        sb.from(table).upsert({ user_id: user.id, key, data: next }, { onConflict: 'user_id,key' });
+      if (sb && userRef.current) {
+        sb.from(table).upsert({ user_id: userRef.current.id, key, data: next }, { onConflict: 'user_id,key' });
       }
       return next;
     });
-  }, [user, key, table]);
+  }, [key]);
 
   return [data, setAndSync];
 }
@@ -183,6 +174,7 @@ function AuthScreen({ onAuth }) {
     if (!email.trim() || (!password.trim() && mode !== 'forgot')) return;
     setError(''); setSuccess(''); setLoading(true);
     try {
+      if (!sb) { onAuth(null); return; }
       if (mode === 'login') {
         const { data, error: err } = await sb.auth.signInWithPassword({ email: email.trim(), password });
         if (err) throw err;
@@ -2693,16 +2685,16 @@ function App() {
 
   const handleAuth = (u) => { setUser(u); setAuthed(true); setLoading(true); };
 
-  const [activeView, setActiveView] = usePersistedState('studio-view', 'deals');
-  const [activeProfile, setActiveProfile] = usePersistedState('studio-profile', 'marc-randolph');
-  const [deals, setDeals] = usePersistedState('studio-deals', initDeals);
-  const [content, setContent] = usePersistedState('studio-content', initContent);
-  const [contacts, setContacts] = usePersistedState('studio-contacts', initContacts);
-  const [ideas, setIdeas] = usePersistedState('studio-ideas', initIdeas);
-  const [archive, setArchive] = usePersistedState('studio-archive', []);
-  const [quickLinks, setQuickLinks] = usePersistedState('studio-quicklinks', defaultProfileLinks);
-  const [sidebarViews, setSidebarViews] = usePersistedState('studio-sidebar-views', DEFAULT_SIDEBAR_VIEWS);
-  const [theme, setTheme] = usePersistedState('studio-theme', 'light');
+  const [activeView, setActiveView] = useSupabaseState('studio-view', 'deals', user);
+  const [activeProfile, setActiveProfile] = useSupabaseState('studio-profile', 'marc-randolph', user);
+  const [deals, setDeals] = useSupabaseState('studio-deals', initDeals, user);
+  const [content, setContent] = useSupabaseState('studio-content', initContent, user);
+  const [contacts, setContacts] = useSupabaseState('studio-contacts', initContacts, user);
+  const [ideas, setIdeas] = useSupabaseState('studio-ideas', initIdeas, user);
+  const [archive, setArchive] = useSupabaseState('studio-archive', [], user);
+  const [quickLinks, setQuickLinks] = useSupabaseState('studio-quicklinks', defaultProfileLinks, user);
+  const [sidebarViews, setSidebarViews] = useSupabaseState('studio-sidebar-views', DEFAULT_SIDEBAR_VIEWS, user);
+  const [theme, setTheme] = useSupabaseState('studio-theme', 'light', user);
   const [openCard, setOpenCard] = useState(null);
   const [openCardType, setOpenCardType] = useState(null);
 

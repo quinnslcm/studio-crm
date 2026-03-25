@@ -73,22 +73,36 @@
     /* ── Loading screen ──────────────────────────────────────── */
     .loading-screen {
       position: fixed; inset: 0; z-index: 9999;
-      background: #0a0a0a;
+      background: #f8f8fa;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      transition: opacity 0.8s ease, transform 0.8s ease;
+      transition: opacity 0.5s ease;
     }
     .loading-screen.fade-out {
-      opacity: 0; transform: scale(1.05);
+      opacity: 0;
       pointer-events: none;
     }
     .loading-canvas { position: absolute; inset: 0; }
     .loading-wordmark {
-      position: absolute; bottom: 48px;
-      font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 300;
-      letter-spacing: 0.35em; color: rgba(255,255,255,0); text-transform: lowercase;
-      transition: color 1.2s ease;
+      position: relative; z-index: 2; margin-top: 24px;
+      font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 300;
+      letter-spacing: 0.35em; color: rgba(0,0,0,0); text-transform: lowercase;
+      transition: color 0.8s ease;
     }
-    .loading-wordmark.visible { color: rgba(255,255,255,0.4); }
+    .loading-wordmark.visible { color: rgba(0,0,0,0.3); }
+    .loading-particles-bg {
+      position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+    }
+    .loading-code-particle {
+      position: absolute;
+      font-family: 'DM Sans', monospace; font-size: 10px; color: #d4d4d8;
+      animation: codeFloat linear infinite; opacity: 0;
+    }
+    @keyframes codeFloat {
+      0% { transform: translateY(100vh); opacity: 0; }
+      8% { opacity: 0.6; }
+      92% { opacity: 0.6; }
+      100% { transform: translateY(-30px); opacity: 0; }
+    }
     @keyframes scanline {
       0% { top: 100%; }
       100% { top: -2%; }
@@ -355,6 +369,18 @@ function LoadingScreen({ onDone }) {
   const [fadeOut, setFadeOut] = useState(false);
   const [showWord, setShowWord] = useState(false);
 
+  // Code particles
+  const codeSnippets = useMemo(() => {
+    const words = ['const','import','async','await','return','export','function','=>','{','}','[]','...','let','data','sync','null','true','0x','api','GET','POST','fetch','build','node','init','push','42','0.1','#ff','rgb','px','rem','grid','flex','map','key','src','ref'];
+    return Array.from({ length: 24 }, (_, i) => ({
+      text: words[i % words.length],
+      left: 5 + Math.random() * 90,
+      delay: Math.random() * 5,
+      duration: 7 + Math.random() * 6,
+      size: 9 + Math.random() * 2,
+    }));
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -371,101 +397,101 @@ function LoadingScreen({ onDone }) {
     resize();
     window.addEventListener('resize', resize);
 
-    // Generate particles in organic cluster
-    const COUNT = 120;
+    // Smaller cluster — 50% scale, ~60px radius
+    const COUNT = 80;
+    const RADIUS = 60;
     const particles = [];
     for (let i = 0; i < COUNT; i++) {
-      // Fibonacci sunflower pattern for organic distribution
       const phi = (1 + Math.sqrt(5)) / 2;
       const theta = 2 * Math.PI * i / (phi * phi);
-      const r = Math.sqrt(i / COUNT) * 120;
+      const r = Math.sqrt(i / COUNT) * RADIUS;
       const targetX = Math.cos(theta) * r;
       const targetY = Math.sin(theta) * r;
-      // Start scattered
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 300 + Math.random() * 400;
+      // Start from center, slightly scattered
+      const scatter = 20 + Math.random() * 60;
+      const sAngle = Math.random() * Math.PI * 2;
       particles.push({
-        x: Math.cos(angle) * dist,
-        y: Math.sin(angle) * dist,
+        x: Math.cos(sAngle) * scatter,
+        y: Math.sin(sAngle) * scatter,
         tx: targetX, ty: targetY,
-        size: 2 + Math.random() * 4,
-        opacity: 0,
+        size: 1.5 + Math.random() * 2.5,
         phase: Math.random() * Math.PI * 2,
-        speed: 0.8 + Math.random() * 0.4,
       });
     }
 
     let startTime = performance.now();
-    let phase = 'gather'; // gather -> breathe -> disperse
+    let phase = 'gather';
     let raf;
 
     const animate = (now) => {
       const elapsed = (now - startTime) / 1000;
       ctx.clearRect(0, 0, W, H);
 
-      if (phase === 'gather' && elapsed > 2.2) {
-        phase = 'breathe';
-        startTime = now;
+      if (phase === 'gather' && elapsed > 1.6) {
+        phase = 'breathe'; startTime = now;
       }
-      if (phase === 'breathe' && (now - startTime) / 1000 > 1.4) {
-        phase = 'disperse';
-        startTime = now;
+      if (phase === 'breathe' && (now - startTime) / 1000 > 1.2) {
+        phase = 'disperse'; startTime = now;
       }
-      if (phase === 'disperse' && (now - startTime) / 1000 > 1.0) {
+      if (phase === 'disperse' && (now - startTime) / 1000 > 0.6) {
         setFadeOut(true);
-        setTimeout(() => onDone(), 800);
+        setTimeout(() => onDone(), 500);
         return;
       }
 
-      particles.forEach((p, i) => {
+      particles.forEach(p => {
         let drawX, drawY, drawOp, drawSize;
 
         if (phase === 'gather') {
-          // Ease toward target
-          const t = Math.min(elapsed / 2.0, 1);
-          const ease = 1 - Math.pow(1 - t, 3); // cubic ease out
+          const t = Math.min(elapsed / 1.4, 1);
+          const ease = 1 - Math.pow(1 - t, 2.5);
           drawX = cx + p.x + (p.tx - p.x) * ease;
           drawY = cy + p.y + (p.ty - p.y) * ease;
-          drawOp = Math.min(t * 2, 1);
+          drawOp = Math.min(t * 1.8, 1);
           drawSize = p.size;
         } else if (phase === 'breathe') {
           const bt = (now - startTime) / 1000;
-          const breathe = 1 + Math.sin(bt * Math.PI * 1.5 + p.phase) * 0.08;
+          const breathe = 1 + Math.sin(bt * Math.PI * 2 + p.phase) * 0.06;
           drawX = cx + p.tx * breathe;
           drawY = cy + p.ty * breathe;
           drawOp = 1;
-          drawSize = p.size * (1 + Math.sin(bt * 3 + p.phase) * 0.15);
+          drawSize = p.size * (1 + Math.sin(bt * 4 + p.phase) * 0.1);
         } else {
-          // Disperse outward
           const dt = (now - startTime) / 1000;
-          const t = Math.min(dt / 0.9, 1);
-          const ease = t * t; // accelerate out
-          const angle = Math.atan2(p.ty, p.tx) + (Math.random() - 0.5) * 0.01;
-          const dist = 500 * ease;
-          drawX = cx + p.tx + Math.cos(angle) * dist;
-          drawY = cy + p.ty + Math.sin(angle) * dist;
+          const t = Math.min(dt / 0.5, 1);
+          const ease = t * t;
           drawOp = 1 - ease;
-          drawSize = p.size * (1 - ease * 0.5);
+          drawSize = p.size * (1 - ease * 0.3);
+          drawX = cx + p.tx * (1 + ease * 0.3);
+          drawY = cy + p.ty * (1 + ease * 0.3);
         }
 
         ctx.beginPath();
-        ctx.arc(drawX, drawY, Math.max(drawSize * drawOp, 0.5), 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${drawOp * 0.9})`;
+        ctx.arc(drawX, drawY, Math.max(drawSize * drawOp, 0.3), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(30,30,30,${drawOp * 0.85})`;
         ctx.fill();
       });
 
       raf = requestAnimationFrame(animate);
     };
 
-    // Show wordmark after particles gather
-    setTimeout(() => setShowWord(true), 1800);
+    setTimeout(() => setShowWord(true), 1200);
 
     raf = requestAnimationFrame(animate);
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
   }, []);
 
   return React.createElement('div', { className: `loading-screen ${fadeOut ? 'fade-out' : ''}` },
-    React.createElement('canvas', { ref: canvasRef, className: 'loading-canvas' }),
+    // Code particles floating in background
+    React.createElement('div', { className: 'loading-particles-bg' },
+      codeSnippets.map((p, i) =>
+        React.createElement('span', {
+          key: i, className: 'loading-code-particle',
+          style: { left: p.left+'%', fontSize: p.size+'px', animationDelay: p.delay+'s', animationDuration: p.duration+'s' }
+        }, p.text)
+      )
+    ),
+    React.createElement('canvas', { ref: canvasRef, className: 'loading-canvas', style: { position:'relative', zIndex:1 } }),
     React.createElement('div', { className: `loading-wordmark ${showWord ? 'visible' : ''}` }, 'l i g h t w o r k')
   );
 }

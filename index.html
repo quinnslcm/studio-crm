@@ -1039,9 +1039,17 @@ function ContentCard({ item, onOpen, onArchive, onDelete }) {
 }
 
 /* ── Drop Column ───────────────────────────────────────────────────────── */
-function DropColumn({ stageKey, label, count, totalValue, children, onDrop }) {
+function DropColumn({ stageKey, label, count, totalValue, children, onDrop, onRenameLabel }) {
   const [over, setOver] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editVal, setEditVal] = useState(label);
+  const inputRef = useRef(null);
   const empty = !children || (Array.isArray(children) && children.length === 0);
+  useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, [editing]);
+  const saveLabel = () => {
+    if (editVal.trim() && editVal.trim() !== label && onRenameLabel) onRenameLabel(stageKey, editVal.trim());
+    setEditing(false);
+  };
   return (
     <div
       onDragOver={e => { e.preventDefault(); setOver(true); }}
@@ -1052,7 +1060,17 @@ function DropColumn({ stageKey, label, count, totalValue, children, onDrop }) {
     >
       <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px',padding:'0 2px' }}>
         <div style={{ display:'flex',alignItems:'baseline',gap:'8px' }}>
-          <span style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.05em',color:'var(--text-secondary)' }}>{label}</span>
+          {editing ? (
+            <input ref={inputRef} value={editVal} onChange={e => setEditVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveLabel(); if (e.key === 'Escape') setEditing(false); }}
+              onBlur={saveLabel}
+              style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.05em',color:'var(--text-secondary)',background:'transparent',border:'none',borderBottom:'1px solid var(--border)',outline:'none',padding:'0 0 2px',textTransform:'uppercase',width:'100px' }} />
+          ) : (
+            <span
+              onDoubleClick={() => { if (onRenameLabel) { setEditVal(label); setEditing(true); } }}
+              title={onRenameLabel ? 'Double-click to rename' : ''}
+              style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.05em',color:'var(--text-secondary)',cursor: onRenameLabel ? 'text' : 'default' }}>{label}</span>
+          )}
           <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>{count}</span>
         </div>
         {totalValue != null && totalValue > 0 && <span style={{ fontSize:'11px',fontWeight:500,color:'var(--text-muted)' }}>{fmtShort(totalValue)}</span>}
@@ -1160,7 +1178,7 @@ function AnimatedValue({ value, prefix='$' }) {
   return <span>{prefix}{typeof display === 'number' ? display.toLocaleString() : display}</span>;
 }
 
-function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCard, onArchiveCard }) {
+function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCard, onArchiveCard, customLabels, onRenameLabel }) {
   const [fadeKey, setFadeKey] = useState(0);
   const [viewMode, setViewMode] = useState('board');
   const [showAdd, setShowAdd] = useState(false);
@@ -1199,7 +1217,7 @@ function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCar
           {DEAL_STAGES.map(stage => {
             const sd = profileDeals.filter(d => d.stage === stage);
             return (
-              <DropColumn key={stage} stageKey={stage} label={DEAL_LABELS[stage]} count={sd.length} totalValue={sd.reduce((s,d)=>s+d.value,0)} onDrop={moveDeal}>
+              <DropColumn key={stage} stageKey={stage} label={(customLabels || DEAL_LABELS)[stage] || stage.toUpperCase()} count={sd.length} totalValue={sd.reduce((s,d)=>s+d.value,0)} onDrop={moveDeal} onRenameLabel={onRenameLabel}>
                 {sd.map(d => <DealCard key={d.id} deal={d} profileId={activeProfile} onOpen={c => onOpenCard(c, 'deal')} onArchive={archiveDeal} onDelete={deleteDeal} />)}
               </DropColumn>
             );
@@ -1221,7 +1239,7 @@ function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCar
 }
 
 /* ── Content View ──────────────────────────────────────────────────────── */
-function ContentView({ activeProfile, setActiveProfile, content, setContent, onOpenCard, onArchiveCard, quickLinks, setQuickLinks }) {
+function ContentView({ activeProfile, setActiveProfile, content, setContent, onOpenCard, onArchiveCard, quickLinks, setQuickLinks, customLabels, onRenameLabel }) {
   const [fadeKey, setFadeKey] = useState(0);
   const [viewMode, setViewMode] = useState('board');
   const [showAdd, setShowAdd] = useState(false);
@@ -1257,7 +1275,7 @@ function ContentView({ activeProfile, setActiveProfile, content, setContent, onO
           {CONTENT_STAGES.map(stage => {
             const si = profileContent.filter(c => c.stage === stage);
             return (
-              <DropColumn key={stage} stageKey={stage} label={CONTENT_LABELS[stage]} count={si.length} onDrop={moveContent}>
+              <DropColumn key={stage} stageKey={stage} label={(customLabels || CONTENT_LABELS)[stage] || stage.toUpperCase()} count={si.length} onDrop={moveContent} onRenameLabel={onRenameLabel}>
                 {si.map(c => <ContentCard key={c.id} item={c} onOpen={card => onOpenCard(card, 'content')} onArchive={archiveContent} onDelete={deleteContent} />)}
               </DropColumn>
             );
@@ -2400,7 +2418,9 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
         color: isActive ? 'var(--text)' : 'var(--text-secondary)',
         fontSize: isChild ? '12px' : '13px', fontWeight: isActive ? 500 : 400, textAlign:'left',
         transition:'background 0.1s, border-color 0.1s',
-        borderLeft: dragOverId === view.id ? '2px solid var(--green)' : '2px solid transparent',
+        borderTop: dragOverId === view.id ? '2px solid var(--green)' : '2px solid transparent',
+        marginTop: dragOverId === view.id ? '2px' : '0',
+        boxShadow: dragOverId === view.id ? '0 -4px 8px -2px rgba(16,185,129,0.15)' : 'none',
       }}>
       {hasChildren && (
         <span onClick={e => { e.stopPropagation(); onToggle(view.id); }}
@@ -2692,6 +2712,7 @@ function App() {
   const [contacts, setContacts] = useSupabaseState('studio-contacts', initContacts, user);
   const [ideas, setIdeas] = useSupabaseState('studio-ideas', initIdeas, user);
   const [archive, setArchive] = useSupabaseState('studio-archive', [], user);
+  const [customLabels, setCustomLabels] = useSupabaseState('studio-custom-labels', { deal: { ...DEAL_LABELS }, content: { ...CONTENT_LABELS } }, user);
   const [quickLinks, setQuickLinks] = useSupabaseState('studio-quicklinks', defaultProfileLinks, user);
   const [sidebarViews, setSidebarViews] = useSupabaseState('studio-sidebar-views', DEFAULT_SIDEBAR_VIEWS, user);
   const [theme, setTheme] = useSupabaseState('studio-theme', 'light', user);
@@ -2739,8 +2760,8 @@ function App() {
     <div style={{ display:'flex',height:'100vh',position:'relative',transition:'background 0.3s ease, color 0.3s ease' }}>
       <InteractiveGrid />
       <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} activeProfile={activeProfile} setActiveProfile={setActiveProfile} profileCounts={(() => { const c = {}; PROFILES.forEach(p => { c[p.id] = (deals[p.id]||[]).length + (content[p.id]||[]).length + (ideas[p.id]||[]).length; }); return c; })()} />
-      {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} />}
-      {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} />}
+      {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} customLabels={customLabels.deal || DEAL_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, deal: { ...prev.deal, [stage]: name } }))} />}
+      {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} customLabels={customLabels.content || CONTENT_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, content: { ...prev.content, [stage]: name } }))} />}
       {activeView === 'ideas' && <IdeasView ideas={ideas} setIdeas={setIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} />}
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} />}

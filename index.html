@@ -2292,34 +2292,49 @@ function InteractiveGrid() {
       const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
       const baseAlpha = isDark ? 0.04 : 0.03;
       const glowRadius = 140;
+      const pushRadius = 80;
+      const pushStrength = 3;
 
       ctx.clearRect(0, 0, w, h);
 
-      // Draw grid lines (very subtle)
+      // Draw grid lines with displacement near cursor
       for (let x = 0; x <= w; x += spacing) {
         const dist = Math.abs(x - mx);
         const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.08 : 0;
         const alpha = baseAlpha * 0.3 + glow;
+        // Push vertical lines away from mouse
+        const push = dist < pushRadius ? (1 - dist / pushRadius) * (1 - dist / pushRadius) * pushStrength * (x > mx ? 1 : -1) : 0;
         ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
         ctx.lineWidth = 0.5;
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
+        // Bend the line around the cursor
+        for (let py = 0; py <= h; py += 4) {
+          const dyy = Math.abs(py - my);
+          const localPush = dyy < pushRadius ? push * (1 - dyy / pushRadius) : 0;
+          if (py === 0) ctx.moveTo(x + localPush, py);
+          else ctx.lineTo(x + localPush, py);
+        }
         ctx.stroke();
       }
       for (let y = 0; y <= h; y += spacing) {
         const dist = Math.abs(y - my);
         const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.08 : 0;
         const alpha = baseAlpha * 0.3 + glow;
+        // Push horizontal lines away from mouse
+        const push = dist < pushRadius ? (1 - dist / pushRadius) * (1 - dist / pushRadius) * pushStrength * (y > my ? 1 : -1) : 0;
         ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
         ctx.lineWidth = 0.5;
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
+        for (let px = 0; px <= w; px += 4) {
+          const dxx = Math.abs(px - mx);
+          const localPush = dxx < pushRadius ? push * (1 - dxx / pushRadius) : 0;
+          if (px === 0) ctx.moveTo(px, y + localPush);
+          else ctx.lineTo(px, y + localPush);
+        }
         ctx.stroke();
       }
 
-      // Draw crosshair marks at intersections
+      // Draw crosshair marks at intersections with displacement
       for (let x = 0; x <= w; x += spacing) {
         for (let y = 0; y <= h; y += spacing) {
           const dx = x - mx;
@@ -2329,19 +2344,27 @@ function InteractiveGrid() {
           const alpha = baseAlpha + glow * 0.18;
           const size = crossSize + glow * 1.5;
 
+          // Push crosses away from cursor
+          let px = x, py = y;
+          if (dist < pushRadius && dist > 0) {
+            const pushAmt = (1 - dist / pushRadius) * (1 - dist / pushRadius) * pushStrength;
+            px += (dx / dist) * pushAmt;
+            py += (dy / dist) * pushAmt;
+          }
+
           ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
           ctx.lineWidth = glow > 0.3 ? 0.8 : 0.5;
 
           // Horizontal tick
           ctx.beginPath();
-          ctx.moveTo(x - size, y);
-          ctx.lineTo(x + size, y);
+          ctx.moveTo(px - size, py);
+          ctx.lineTo(px + size, py);
           ctx.stroke();
 
           // Vertical tick
           ctx.beginPath();
-          ctx.moveTo(x, y - size);
-          ctx.lineTo(x, y + size);
+          ctx.moveTo(px, py - size);
+          ctx.lineTo(px, py + size);
           ctx.stroke();
         }
       }

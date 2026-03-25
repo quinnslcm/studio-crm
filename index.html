@@ -931,9 +931,6 @@ function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCar
             <button onClick={()=>setShowAdd(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New Deal</button>
           </div>
         </div>
-        <div style={{ paddingBottom:'18px' }}>
-          <ProfileSwitcher active={activeProfile} onSwitch={handleProfileSwitch} counts={counts} />
-        </div>
       </div>
       {viewMode === 'board' ? (
         <div key={fadeKey} className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px',display:'flex',gap:'14px' }}>
@@ -990,7 +987,6 @@ function ContentView({ activeProfile, setActiveProfile, content, setContent, onO
             <button onClick={()=>setShowAdd(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New</button>
           </div>
         </div>
-        <div style={{ marginBottom:'14px' }}><ProfileSwitcher active={activeProfile} onSwitch={handleProfileSwitch} counts={counts} /></div>
         <div style={{ marginBottom:'14px' }}><QuickLinks profileId={activeProfile} allLinks={quickLinks} setAllLinks={setQuickLinks} /></div>
         <div style={{ fontSize:'12px',color:'var(--text-muted)',marginBottom:'18px' }}>Long-form to multi-platform repurposing &middot; check to select &middot; shift+click for range</div>
       </div>
@@ -1339,7 +1335,6 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
       <div style={{ marginBottom:'20px' }}>
         <div style={{ display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px' }}>
           <h1 style={{ fontSize:'15px',fontWeight:600 }}>Ideas</h1>
-          <ProfileSwitcher active={activeProfile} onSwitch={setActiveProfile} counts={profileCounts} />
           <div style={{ marginLeft:'auto',display:'flex',gap:'8px',alignItems:'center' }}>
             <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 12px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)',width:'180px' }}>
               <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
@@ -1792,7 +1787,7 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
   );
 }
 
-function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, setSidebarViews }) {
+function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, setSidebarViews, activeProfile, setActiveProfile, profileCounts }) {
   const [expanded, setExpanded] = usePersistedState('studio-sidebar-expanded', { content: true });
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
@@ -1860,11 +1855,8 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
       <div style={{ padding:'18px 18px 14px',borderBottom:'1px solid var(--border)' }}>
         <ScrambleLogo />
       </div>
-      <div style={{ padding:'10px 10px 4px' }}>
-        <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'7px 10px',background:'var(--surface)',borderRadius:'var(--radius-sm)',border:'1px solid var(--border)' }}>
-          <span style={{ color:'var(--text-muted)',fontSize:'12px' }}>&#x2315;</span>
-          <input placeholder="Search..." style={{ fontSize:'12px',width:'100%' }} />
-        </div>
+      <div style={{ padding:'10px 12px 4px' }}>
+        <ProfileSwitcher active={activeProfile} onSwitch={setActiveProfile} counts={profileCounts || {}} />
       </div>
       <div
         onDragOver={e => { e.preventDefault(); if(!dragOverId || dragOverId === '__views_area__') setDragOverId('__views_area__'); }}
@@ -1969,7 +1961,7 @@ function App() {
   return (
     <div style={{ display:'flex',height:'100vh',position:'relative',transition:'background 0.3s ease, color 0.3s ease' }}>
       <div className="grid-bg" />
-      <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} />
+      <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} activeProfile={activeProfile} setActiveProfile={setActiveProfile} profileCounts={(() => { const c = {}; PROFILES.forEach(p => { c[p.id] = (deals[p.id]||[]).length + (content[p.id]||[]).length + (ideas[p.id]||[]).length; }); return c; })()} />
       {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} />}
       {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} />}
       {activeView === 'ideas' && <IdeasView ideas={ideas} setIdeas={setIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} />}

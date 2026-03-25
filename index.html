@@ -132,12 +132,19 @@ function useSupabaseState(key, defaultVal, user) {
   const userRef = useRef(user);
   userRef.current = user;
 
-  // Load from Supabase when user available
+  // Load from Supabase when user available — seed defaults if no row exists
   useEffect(() => {
     if (!sb || !user || synced) return;
     sb.from(table).select('data').eq('user_id', user.id).eq('key', key).single()
       .then(({ data: row }) => {
-        if (row && row.data) { setData(row.data); localStorage.setItem(key, JSON.stringify(row.data)); }
+        if (row && row.data) {
+          setData(row.data);
+          localStorage.setItem(key, JSON.stringify(row.data));
+        } else {
+          // No row in DB — seed defaults so they persist for this user
+          const def = typeof defaultVal === 'function' ? defaultVal() : defaultVal;
+          sb.from(table).upsert({ user_id: user.id, key, data: def }, { onConflict: 'user_id,key' });
+        }
         setSynced(true);
       });
   }, [user, synced, key]);

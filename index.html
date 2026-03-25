@@ -141,26 +141,39 @@ const sb = sbLib && sbLib.createClient ? sbLib.createClient(SUPABASE_URL, SUPABA
 // Falls back to localStorage if not authenticated or table doesn't exist yet
 function useSupabaseState(key, defaultVal, user) {
   const table = 'user_data';
+  const getDefault = () => typeof defaultVal === 'function' ? defaultVal() : defaultVal;
   const [data, setData] = useState(() => {
-    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : (typeof defaultVal === 'function' ? defaultVal() : defaultVal); }
-    catch { return typeof defaultVal === 'function' ? defaultVal() : defaultVal; }
+    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : getDefault(); }
+    catch { return getDefault(); }
   });
   const [synced, setSynced] = useState(false);
   const userRef = useRef(user);
   userRef.current = user;
+  const prevUserId = useRef(null);
 
-  // Load from Supabase when user available — seed defaults if no row exists
+  // When user changes (sign in/out), reset sync so we re-fetch from Supabase
+  useEffect(() => {
+    const uid = user ? user.id : null;
+    if (uid !== prevUserId.current) {
+      prevUserId.current = uid;
+      setSynced(false);
+    }
+  }, [user]);
+
+  // Load from Supabase when user available — ALWAYS prefer Supabase over localStorage
   useEffect(() => {
     if (!sb || !user || synced) return;
     sb.from(table).select('data').eq('user_id', user.id).eq('key', key).single()
-      .then(({ data: row }) => {
+      .then(({ data: row, error }) => {
         if (row && row.data) {
+          // Supabase has data — use it (overrides localStorage)
           setData(row.data);
           localStorage.setItem(key, JSON.stringify(row.data));
-        } else {
-          // No row in DB — seed defaults so they persist for this user
-          const def = typeof defaultVal === 'function' ? defaultVal() : defaultVal;
-          sb.from(table).upsert({ user_id: user.id, key, data: def }, { onConflict: 'user_id,key' });
+        } else if (!error || error.code === 'PGRST116') {
+          // No row in DB — seed current state (which may have user edits from localStorage)
+          const current = data;
+          sb.from(table).upsert({ user_id: user.id, key, data: current }, { onConflict: 'user_id,key' })
+            .then(({ error: upsertErr }) => { if (upsertErr) console.warn('Supabase upsert error for ' + key + ':', upsertErr.message); });
         }
         setSynced(true);
       });
@@ -172,7 +185,8 @@ function useSupabaseState(key, defaultVal, user) {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       localStorage.setItem(key, JSON.stringify(next));
       if (sb && userRef.current) {
-        sb.from(table).upsert({ user_id: userRef.current.id, key, data: next }, { onConflict: 'user_id,key' });
+        sb.from(table).upsert({ user_id: userRef.current.id, key, data: next }, { onConflict: 'user_id,key' })
+          .then(({ error }) => { if (error) console.warn('Sync error for ' + key + ':', error.message); });
       }
       return next;
     });
@@ -3208,7 +3222,14 @@ function App() {
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} contacts={contacts} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
-      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} user={user} onLogout={async () => { if (sb) await sb.auth.signOut(); setUser(null); setAuthed(false); }} />}
+      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} user={user} onLogout={async () => {
+              if (sb) await sb.auth.signOut();
+              // Clear data localStorage so next login re-fetches from Supabase
+              ['studio-deals','studio-content','studio-ideas','studio-contacts','studio-archive',
+               'studio-idea-folders','studio-custom-labels','studio-quicklinks','studio-sidebar-views',
+               'studio-theme','studio-view','studio-profile','studio-cal-events'].forEach(k => localStorage.removeItem(k));
+              setUser(null); setAuthed(false);
+            }} />}
       {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} onArchive={handleArchiveCard} />}
     </div>
   );

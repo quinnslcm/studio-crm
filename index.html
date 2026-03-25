@@ -7,7 +7,7 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <style>
@@ -163,7 +163,8 @@ const { useState, useRef, useEffect, useCallback } = React;
 /* ── Supabase Client ──────────────────────────────────────────────── */
 const SUPABASE_URL = 'https://chdmrjxvqjuowsxssfyt.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_2KDDqLBYn1bGVnaDABbCiA_wp8ruJdN';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sbLib = window.supabase;
+const sb = sbLib && sbLib.createClient ? sbLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 /* ── Supabase-backed persisted state hook ─────────────────────────── */
 // Falls back to localStorage if not authenticated or table doesn't exist yet
@@ -177,9 +178,10 @@ function useSupabaseState(key, table, defaultVal) {
 
   // Check auth on mount
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: d }) => { if (d.user) setUser(d.user); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user || null);
+    if (!sb) return;
+    sb.auth.getUser().then(({ data: d }) => { if (d && d.user) setUser(d.user); });
+    const { data: listener } = sb.auth.onAuthStateChange((_, session) => {
+      setUser(session && session.user ? session.user : null);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -187,7 +189,7 @@ function useSupabaseState(key, table, defaultVal) {
   // Load from Supabase when user logs in
   useEffect(() => {
     if (!user || synced) return;
-    supabase.from(table).select('data').eq('user_id', user.id).eq('key', key).single()
+    sb.from(table).select('data').eq('user_id', user.id).eq('key', key).single()
       .then(({ data: row, error }) => {
         if (row && row.data) { setData(row.data); localStorage.setItem(key, JSON.stringify(row.data)); }
         setSynced(true);
@@ -201,7 +203,7 @@ function useSupabaseState(key, table, defaultVal) {
       localStorage.setItem(key, JSON.stringify(next));
       // Async save to Supabase if authenticated
       if (user) {
-        supabase.from(table).upsert({ user_id: user.id, key, data: next }, { onConflict: 'user_id,key' });
+        sb.from(table).upsert({ user_id: user.id, key, data: next }, { onConflict: 'user_id,key' });
       }
       return next;
     });

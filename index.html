@@ -2576,11 +2576,34 @@ function SettingsView({ theme, setTheme, onProfilesChange, user, onLogout }) {
 
       <div>
         <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Data</div>
-        <button onClick={() => { localStorage.clear(); window.location.reload(); }}
+        <button onClick={() => {
+          if (!confirm('This will clear all your data and give you a blank workspace. Are you sure?')) return;
+          // Build empty slate for each profile
+          const emptyByProfile = {};
+          PROFILES.forEach(p => { emptyByProfile[p.id] = []; });
+          const emptyFolders = {};
+          PROFILES.forEach(p => { emptyFolders[p.id] = []; });
+          // Set blank data
+          localStorage.setItem('studio-deals', JSON.stringify(emptyByProfile));
+          localStorage.setItem('studio-content', JSON.stringify(emptyByProfile));
+          localStorage.setItem('studio-ideas', JSON.stringify(emptyByProfile));
+          localStorage.setItem('studio-contacts', JSON.stringify([]));
+          localStorage.setItem('studio-archive', JSON.stringify([]));
+          localStorage.setItem('studio-idea-folders', JSON.stringify(emptyFolders));
+          localStorage.setItem('studio-cal-events', JSON.stringify([]));
+          // Clear Supabase data if logged in
+          if (sb && user) {
+            ['studio-deals','studio-content','studio-ideas','studio-contacts','studio-archive','studio-idea-folders'].forEach(key => {
+              const val = key === 'studio-contacts' || key === 'studio-archive' ? [] : key === 'studio-idea-folders' ? emptyFolders : emptyByProfile;
+              sb.from('user_data').upsert({ user_id: user.id, key, data: val }, { onConflict: 'user_id,key' });
+            });
+          }
+          window.location.reload();
+        }}
           style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--red)',borderRadius:'var(--radius-sm)',color:'var(--red)',fontSize:'12px',fontWeight:500,cursor:'pointer' }}>
-          Clear all data &amp; reset
+          Clear all data
         </button>
-        <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'6px' }}>All deals, content, and contacts will be reset to defaults.</div>
+        <div style={{ fontSize:'11px',color:'var(--text-muted)',marginTop:'6px' }}>Removes all deals, content, contacts, and ideas. Gives you a blank workspace.</div>
       </div>
     </div>
   );

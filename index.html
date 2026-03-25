@@ -73,82 +73,22 @@
     /* ── Loading screen ──────────────────────────────────────── */
     .loading-screen {
       position: fixed; inset: 0; z-index: 9999;
-      background: #ffffff;
+      background: #0a0a0a;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      transition: opacity 0.6s ease, transform 0.6s ease;
+      transition: opacity 0.8s ease, transform 0.8s ease;
     }
     .loading-screen.fade-out {
-      opacity: 0; transform: scale(1.02);
+      opacity: 0; transform: scale(1.05);
       pointer-events: none;
     }
-    .loading-logo {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 14px; font-weight: 300; letter-spacing: 0.45em;
-      color: #18181b; text-transform: lowercase;
-      margin-bottom: 48px; opacity: 0;
-      animation: loadLogoIn 0.8s ease-out 0.2s forwards;
+    .loading-canvas { position: absolute; inset: 0; }
+    .loading-wordmark {
+      position: absolute; bottom: 48px;
+      font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 300;
+      letter-spacing: 0.35em; color: rgba(255,255,255,0); text-transform: lowercase;
+      transition: color 1.2s ease;
     }
-    .loading-percent {
-      font-family: 'DM Sans', monospace;
-      font-size: 13px; font-weight: 400; letter-spacing: 0.15em;
-      color: #a1a1aa;
-      font-variant-numeric: tabular-nums;
-      opacity: 0;
-      animation: loadLogoIn 0.6s ease-out 0.4s forwards;
-    }
-    .loading-bar-track {
-      width: 200px; height: 1px;
-      background: #e4e4e7;
-      margin-top: 16px; border-radius: 1px; overflow: hidden;
-      opacity: 0;
-      animation: loadLogoIn 0.6s ease-out 0.4s forwards;
-    }
-    .loading-bar-fill {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, #34d399, #10b981);
-      border-radius: 1px;
-      transition: width 0.1s linear;
-    }
-    .loading-line {
-      position: absolute; bottom: 40px;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 11px; font-weight: 300; letter-spacing: 0.2em;
-      color: #a1a1aa; text-transform: uppercase;
-      opacity: 0;
-      animation: loadLogoIn 0.5s ease-out 0.6s forwards;
-    }
-    .loading-particles {
-      position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-    }
-    .loading-particle {
-      position: absolute;
-      font-family: 'DM Sans', monospace;
-      font-size: 10px; color: #d4d4d8;
-      animation: particleDrift 8s linear infinite;
-      opacity: 0;
-    }
-    .loading-bar-fill {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, #34d399, #10b981);
-      border-radius: 1px;
-      transition: width 0.1s linear;
-      box-shadow: 0 0 8px rgba(16,185,129,0.4), 0 0 20px rgba(16,185,129,0.15);
-    }
-    .loading-scanline {
-      position: absolute; left: 0; right: 0;
-      height: 1px; background: linear-gradient(90deg, transparent, rgba(52,211,153,0.06), transparent);
-      animation: scanline 3s linear infinite;
-    }
-    @keyframes loadLogoIn {
-      0% { opacity: 0; transform: translateY(8px); }
-      100% { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes particleDrift {
-      0% { transform: translateY(100vh); opacity: 0; }
-      5% { opacity: 1; }
-      95% { opacity: 1; }
-      100% { transform: translateY(-20px); opacity: 0; }
-    }
+    .loading-wordmark.visible { color: rgba(255,255,255,0.4); }
     @keyframes scanline {
       0% { top: 100%; }
       100% { top: -2%; }
@@ -411,79 +351,122 @@ function AuthScreen({ onAuth }) {
 
 /* ── Loading Screen ──────────────────────────────────────────────── */
 function LoadingScreen({ onDone }) {
-  const [pct, setPct] = React.useState(0);
-  const [fadeOut, setFadeOut] = React.useState(false);
-  const [statusLine, setStatusLine] = React.useState('initializing');
-  const statusLines = ['initializing', 'loading profiles', 'syncing pipeline', 'building workspace', 'ready'];
-  React.useEffect(() => {
-    let t = 0;
-    const steps = [
-      { target: 22, speed: 35 },
-      { target: 48, speed: 25 },
-      { target: 72, speed: 38 },
-      { target: 91, speed: 18 },
-      { target: 100, speed: 12 },
-    ];
-    let current = 0;
-    let step = 0;
-    const tick = () => {
-      if (step >= steps.length) {
-        setTimeout(() => setFadeOut(true), 200);
+  const canvasRef = useRef(null);
+  const [fadeOut, setFadeOut] = useState(false);
+  const [showWord, setShowWord] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    let W, H, cx, cy;
+    const resize = () => {
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cx = W / 2; cy = H / 2;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Generate particles in organic cluster
+    const COUNT = 120;
+    const particles = [];
+    for (let i = 0; i < COUNT; i++) {
+      // Fibonacci sunflower pattern for organic distribution
+      const phi = (1 + Math.sqrt(5)) / 2;
+      const theta = 2 * Math.PI * i / (phi * phi);
+      const r = Math.sqrt(i / COUNT) * 120;
+      const targetX = Math.cos(theta) * r;
+      const targetY = Math.sin(theta) * r;
+      // Start scattered
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 300 + Math.random() * 400;
+      particles.push({
+        x: Math.cos(angle) * dist,
+        y: Math.sin(angle) * dist,
+        tx: targetX, ty: targetY,
+        size: 2 + Math.random() * 4,
+        opacity: 0,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 0.4,
+      });
+    }
+
+    let startTime = performance.now();
+    let phase = 'gather'; // gather -> breathe -> disperse
+    let raf;
+
+    const animate = (now) => {
+      const elapsed = (now - startTime) / 1000;
+      ctx.clearRect(0, 0, W, H);
+
+      if (phase === 'gather' && elapsed > 2.2) {
+        phase = 'breathe';
+        startTime = now;
+      }
+      if (phase === 'breathe' && (now - startTime) / 1000 > 1.4) {
+        phase = 'disperse';
+        startTime = now;
+      }
+      if (phase === 'disperse' && (now - startTime) / 1000 > 1.0) {
+        setFadeOut(true);
         setTimeout(() => onDone(), 800);
         return;
       }
-      const { target, speed } = steps[step];
-      current++;
-      setPct(current);
-      if (current >= target) {
-        step++;
-        if (step < statusLines.length) setStatusLine(statusLines[step]);
-      }
-      t = setTimeout(tick, speed + Math.random() * 15);
-    };
-    t = setTimeout(tick, 500);
-    return () => clearTimeout(t);
-  }, []);
 
-  // Floating code particles
-  const particles = React.useMemo(() => {
-    const snippets = ['const','import','async','await','return','export','function','=>','{','}','[]','...','let','data','sync','null','true','0x','ssh','api','GET','POST','fetch','pipe','build','node','init','push','pull'];
-    return Array.from({ length: 20 }, (_, i) => ({
-      text: snippets[i % snippets.length],
-      left: Math.random() * 100,
-      delay: Math.random() * 6,
-      duration: 6 + Math.random() * 6,
-      size: 9 + Math.random() * 3,
-    }));
+      particles.forEach((p, i) => {
+        let drawX, drawY, drawOp, drawSize;
+
+        if (phase === 'gather') {
+          // Ease toward target
+          const t = Math.min(elapsed / 2.0, 1);
+          const ease = 1 - Math.pow(1 - t, 3); // cubic ease out
+          drawX = cx + p.x + (p.tx - p.x) * ease;
+          drawY = cy + p.y + (p.ty - p.y) * ease;
+          drawOp = Math.min(t * 2, 1);
+          drawSize = p.size;
+        } else if (phase === 'breathe') {
+          const bt = (now - startTime) / 1000;
+          const breathe = 1 + Math.sin(bt * Math.PI * 1.5 + p.phase) * 0.08;
+          drawX = cx + p.tx * breathe;
+          drawY = cy + p.ty * breathe;
+          drawOp = 1;
+          drawSize = p.size * (1 + Math.sin(bt * 3 + p.phase) * 0.15);
+        } else {
+          // Disperse outward
+          const dt = (now - startTime) / 1000;
+          const t = Math.min(dt / 0.9, 1);
+          const ease = t * t; // accelerate out
+          const angle = Math.atan2(p.ty, p.tx) + (Math.random() - 0.5) * 0.01;
+          const dist = 500 * ease;
+          drawX = cx + p.tx + Math.cos(angle) * dist;
+          drawY = cy + p.ty + Math.sin(angle) * dist;
+          drawOp = 1 - ease;
+          drawSize = p.size * (1 - ease * 0.5);
+        }
+
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, Math.max(drawSize * drawOp, 0.5), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${drawOp * 0.9})`;
+        ctx.fill();
+      });
+
+      raf = requestAnimationFrame(animate);
+    };
+
+    // Show wordmark after particles gather
+    setTimeout(() => setShowWord(true), 1800);
+
+    raf = requestAnimationFrame(animate);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
   }, []);
 
   return React.createElement('div', { className: `loading-screen ${fadeOut ? 'fade-out' : ''}` },
-    // Particles
-    React.createElement('div', { className: 'loading-particles' },
-      particles.map((p, i) =>
-        React.createElement('span', {
-          key: i,
-          className: 'loading-particle',
-          style: { left: p.left+'%', fontSize: p.size+'px', animationDelay: p.delay+'s', animationDuration: p.duration+'s' }
-        }, p.text)
-      )
-    ),
-    // Scanline
-    React.createElement('div', { className: 'loading-scanline' }),
-    // Logo
-    React.createElement('div', { className: 'loading-logo' }, 'l i g h t w o r k'),
-    // Percent
-    React.createElement('div', { className: 'loading-percent' }, `${String(pct).padStart(3,'0')}%`),
-    // Bar
-    React.createElement('div', { className: 'loading-bar-track' },
-      React.createElement('div', { className: 'loading-bar-fill', style: { width: `${pct}%` } })
-    ),
-    // Status line
-    React.createElement('div', {
-      style: { marginTop:'14px', fontSize:'10px', fontFamily:'monospace', color:'#3f3f46', letterSpacing:'0.08em', opacity:0, animation:'loadLogoIn 0.4s ease-out 0.5s forwards', transition:'color 0.3s ease' }
-    }, `> ${statusLine}...`),
-    // Footer
-    React.createElement('div', { className: 'loading-line' }, 'studio crm')
+    React.createElement('canvas', { ref: canvasRef, className: 'loading-canvas' }),
+    React.createElement('div', { className: `loading-wordmark ${showWord ? 'visible' : ''}` }, 'l i g h t w o r k')
   );
 }
 

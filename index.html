@@ -963,21 +963,28 @@ function CardDetail({ card, onClose, onUpdate, onArchive, color }) {
 }
 
 /* ── Draggable Card ────────────────────────────────────────────────────── */
-function DealCard({ deal, profileId, onOpen, onArchive, onDelete }) {
+function DealCard({ deal, profileId, onOpen, onArchive, onDelete, selected, onSelect }) {
   const color = PROFILE_COLORS[profileId] || '#777';
   const label = PROFILES.find(p => p.id === profileId)?.label || '';
   const [ctx, setCtx] = useState(null);
   const [confirmDel, setConfirmDel] = useState(false);
-  const [hoverX, setHoverX] = useState(false);
+  const [hover, setHover] = useState(false);
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
-    <div draggable onDragStart={e => { dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
+    <div draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
-      onClick={() => onOpen(deal)} onContextMenu={handleContext}
-      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s',position:'relative' }}
-      onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--border-light)';setHoverX(true);}} onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';setHoverX(false);}}>
-      {hoverX && <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ position:'absolute',top:'6px',right:'6px',width:'20px',height:'20px',borderRadius:'4px',background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',transition:'color 0.15s' }}
+      onClick={(e) => { if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); onSelect && onSelect(deal.id, e); } else { onOpen(deal); } }}
+      onContextMenu={handleContext}
+      style={{ background: selected ? 'var(--surface-hover)' : 'var(--surface)',border: selected ? '1px solid var(--green)' : '1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s, background 0.15s',position:'relative' }}
+      onMouseEnter={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border-light)';setHover(true);}} onMouseLeave={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border)';setHover(false);}}>
+      {(hover || selected) && (
+        <div onClick={e=>{e.stopPropagation(); onSelect && onSelect(deal.id, e);}}
+          style={{ position:'absolute',top:'6px',left:'6px',width:'16px',height:'16px',borderRadius:'3px',border: selected ? 'none' : '1.5px solid var(--text-muted)',background: selected ? 'var(--green)' : 'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s' }}>
+          {selected && <span style={{ color:'#fff',fontSize:'10px',fontWeight:700 }}>&#10003;</span>}
+        </div>
+      )}
+      {hover && !selected && <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ position:'absolute',top:'6px',right:'6px',width:'20px',height:'20px',borderRadius:'4px',background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',transition:'color 0.15s' }}
         onMouseEnter={e=>e.currentTarget.style.color='var(--red)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>&times;</button>}
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
         <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
@@ -1000,20 +1007,27 @@ function DealCard({ deal, profileId, onOpen, onArchive, onDelete }) {
   );
 }
 
-function ContentCard({ item, onOpen, onArchive, onDelete }) {
+function ContentCard({ item, onOpen, onArchive, onDelete, selected, onSelect }) {
   const tc = TYPE_COLORS[item.type] || '#777';
   const [ctx, setCtx] = useState(null);
   const [confirmDel, setConfirmDel] = useState(false);
-  const [hoverX, setHoverX] = useState(false);
+  const [hover, setHover] = useState(false);
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
-    <div draggable onDragStart={e => { dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
+    <div draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
-      onClick={() => onOpen(item)} onContextMenu={handleContext}
-      style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s',position:'relative' }}
-      onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--border-light)';setHoverX(true);}} onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';setHoverX(false);}}>
-      {hoverX && <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ position:'absolute',top:'6px',right:'6px',width:'20px',height:'20px',borderRadius:'4px',background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',transition:'color 0.15s' }}
+      onClick={(e) => { if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); onSelect && onSelect(item.id, e); } else { onOpen(item); } }}
+      onContextMenu={handleContext}
+      style={{ background: selected ? 'var(--surface-hover)' : 'var(--surface)',border: selected ? '1px solid var(--green)' : '1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s, background 0.15s',position:'relative' }}
+      onMouseEnter={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border-light)';setHover(true);}} onMouseLeave={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border)';setHover(false);}}>
+      {(hover || selected) && (
+        <div onClick={e=>{e.stopPropagation(); onSelect && onSelect(item.id, e);}}
+          style={{ position:'absolute',top:'6px',left:'6px',width:'16px',height:'16px',borderRadius:'3px',border: selected ? 'none' : '1.5px solid var(--text-muted)',background: selected ? 'var(--green)' : 'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s' }}>
+          {selected && <span style={{ color:'#fff',fontSize:'10px',fontWeight:700 }}>&#10003;</span>}
+        </div>
+      )}
+      {hover && !selected && <button onClick={e=>{e.stopPropagation();setConfirmDel(true);}} style={{ position:'absolute',top:'6px',right:'6px',width:'20px',height:'20px',borderRadius:'4px',background:'transparent',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',transition:'color 0.15s' }}
         onMouseEnter={e=>e.currentTarget.style.color='var(--red)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>&times;</button>}
       <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px' }}>
         <div style={{ display:'flex',alignItems:'center',gap:'6px' }}>
@@ -1038,6 +1052,40 @@ function ContentCard({ item, onOpen, onArchive, onDelete }) {
   );
 }
 
+/* ── Selection Toolbar ─────────────────────────────────────────────────── */
+function SelectionToolbar({ count, onDelete, onArchive, onMove, stages, onClear }) {
+  const [showMove, setShowMove] = useState(false);
+  if (count === 0) return null;
+  return (
+    <div style={{ position:'sticky',top:0,zIndex:20,padding:'8px 16px',margin:'0 32px 8px',background:'var(--text)',color:'var(--bg)',borderRadius:'var(--radius)',display:'flex',alignItems:'center',gap:'16px',fontSize:'12px',fontWeight:500,boxShadow:'0 4px 12px rgba(0,0,0,0.15)',animation:'slideDown 0.2s ease' }}>
+      <style>{`@keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }`}</style>
+      <span style={{ fontWeight:600 }}>{count} selected</span>
+      <div style={{ width:'1px',height:'16px',background:'rgba(255,255,255,0.2)' }} />
+      {stages && (
+        <div style={{ position:'relative' }}>
+          <button onClick={() => setShowMove(!showMove)} style={{ background:'transparent',border:'1px solid rgba(255,255,255,0.25)',color:'inherit',padding:'4px 10px',borderRadius:'4px',cursor:'pointer',fontSize:'11px',fontWeight:500 }}>Move to...</button>
+          {showMove && (
+            <div style={{ position:'absolute',top:'100%',left:0,marginTop:'4px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius)',boxShadow:'0 8px 24px rgba(0,0,0,0.12)',zIndex:30,minWidth:'140px',overflow:'hidden' }}>
+              {stages.map(s => (
+                <button key={s.key} onClick={() => { onMove(s.key); setShowMove(false); }}
+                  style={{ display:'block',width:'100%',padding:'8px 12px',background:'transparent',border:'none',color:'var(--text)',fontSize:'12px',textAlign:'left',cursor:'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background='var(--surface-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <button onClick={onArchive} style={{ background:'transparent',border:'1px solid rgba(255,255,255,0.25)',color:'inherit',padding:'4px 10px',borderRadius:'4px',cursor:'pointer',fontSize:'11px',fontWeight:500 }}>Archive</button>
+      <button onClick={onDelete} style={{ background:'rgba(239,68,68,0.2)',border:'1px solid rgba(239,68,68,0.4)',color:'#fca5a5',padding:'4px 10px',borderRadius:'4px',cursor:'pointer',fontSize:'11px',fontWeight:500 }}>Delete</button>
+      <div style={{ flex:1 }} />
+      <button onClick={onClear} style={{ background:'transparent',border:'none',color:'rgba(255,255,255,0.6)',cursor:'pointer',fontSize:'11px' }}>Clear</button>
+    </div>
+  );
+}
+
 /* ── Drop Column ───────────────────────────────────────────────────────── */
 function DropColumn({ stageKey, label, count, totalValue, children, onDrop, onRenameLabel }) {
   const [over, setOver] = useState(false);
@@ -1052,7 +1100,7 @@ function DropColumn({ stageKey, label, count, totalValue, children, onDrop, onRe
   };
   return (
     <div
-      onDragOver={e => { e.preventDefault(); setOver(true); }}
+      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect='move'; setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={e => { e.preventDefault(); setOver(false); if (dragData) onDrop(dragData.id, stageKey); }}
       className={over ? 'drop-target' : ''}
@@ -1182,11 +1230,18 @@ function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCar
   const [fadeKey, setFadeKey] = useState(0);
   const [viewMode, setViewMode] = useState('board');
   const [showAdd, setShowAdd] = useState(false);
+  const [selected, setSelected] = useState(new Set());
   const profileDeals = deals[activeProfile] || [];
   const pipelineValue = profileDeals.filter(d => d.stage !== 'lost').reduce((s,d) => s+d.value, 0);
   const counts = {}; Object.entries(deals).forEach(([pid,d]) => { counts[pid] = d.length; });
   const profileLabel = PROFILES.find(p=>p.id===activeProfile)?.label||'';
-  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); };
+  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); setSelected(new Set()); };
+  const toggleSelect = (id, e) => {
+    setSelected(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  };
+  const bulkDelete = () => { setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].filter(d => !selected.has(d.id)) })); setSelected(new Set()); };
+  const bulkArchive = () => { profileDeals.filter(d => selected.has(d.id)).forEach(d => onArchiveCard(d, 'deal')); setSelected(new Set()); };
+  const bulkMove = (stage) => { setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(d => selected.has(d.id) ? { ...d, stage } : d) })); setSelected(new Set()); };
   const moveDeal = (dealId, newStage) => {
     setDeals(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(d => d.id === dealId ? { ...d, stage: newStage } : d) }));
   };
@@ -1212,13 +1267,15 @@ function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCar
           </div>
         </div>
       </div>
+      <SelectionToolbar count={selected.size} onDelete={bulkDelete} onArchive={bulkArchive}
+        onMove={bulkMove} stages={DEAL_STAGES.map(s => ({ key:s, label:(customLabels||DEAL_LABELS)[s]||s.toUpperCase() }))} onClear={() => setSelected(new Set())} />
       {viewMode === 'board' ? (
         <div key={fadeKey} className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px',display:'flex',gap:'14px' }}>
           {DEAL_STAGES.map(stage => {
             const sd = profileDeals.filter(d => d.stage === stage);
             return (
               <DropColumn key={stage} stageKey={stage} label={(customLabels || DEAL_LABELS)[stage] || stage.toUpperCase()} count={sd.length} totalValue={sd.reduce((s,d)=>s+d.value,0)} onDrop={moveDeal} onRenameLabel={onRenameLabel}>
-                {sd.map(d => <DealCard key={d.id} deal={d} profileId={activeProfile} onOpen={c => onOpenCard(c, 'deal')} onArchive={archiveDeal} onDelete={deleteDeal} />)}
+                {sd.map(d => <DealCard key={d.id} deal={d} profileId={activeProfile} onOpen={c => onOpenCard(c, 'deal')} onArchive={archiveDeal} onDelete={deleteDeal} selected={selected.has(d.id)} onSelect={toggleSelect} />)}
               </DropColumn>
             );
           })}
@@ -1243,10 +1300,17 @@ function ContentView({ activeProfile, setActiveProfile, content, setContent, onO
   const [fadeKey, setFadeKey] = useState(0);
   const [viewMode, setViewMode] = useState('board');
   const [showAdd, setShowAdd] = useState(false);
+  const [selected, setSelected] = useState(new Set());
   const profileContent = content[activeProfile] || [];
   const counts = {}; Object.entries(content).forEach(([pid,c]) => { counts[pid] = c.length; });
   const profileLabel = PROFILES.find(p=>p.id===activeProfile)?.label||'';
-  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); };
+  const handleProfileSwitch = (id) => { setActiveProfile(id); setFadeKey(k => k+1); setSelected(new Set()); };
+  const toggleSelect = (id, e) => {
+    setSelected(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  };
+  const bulkDelete = () => { setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].filter(c => !selected.has(c.id)) })); setSelected(new Set()); };
+  const bulkArchive = () => { profileContent.filter(c => selected.has(c.id)).forEach(c => onArchiveCard(c, 'content')); setSelected(new Set()); };
+  const bulkMove = (stage) => { setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(c => selected.has(c.id) ? { ...c, stage } : c) })); setSelected(new Set()); };
   const moveContent = (itemId, newStage) => {
     setContent(prev => ({ ...prev, [activeProfile]: prev[activeProfile].map(c => c.id === itemId ? { ...c, stage: newStage } : c) }));
   };
@@ -1270,13 +1334,15 @@ function ContentView({ activeProfile, setActiveProfile, content, setContent, onO
         <div style={{ marginBottom:'14px' }}><QuickLinks profileId={activeProfile} allLinks={quickLinks} setAllLinks={setQuickLinks} /></div>
         <div style={{ fontSize:'12px',color:'var(--text-muted)',marginBottom:'18px' }}>Long-form to multi-platform repurposing &middot; check to select &middot; shift+click for range</div>
       </div>
+      <SelectionToolbar count={selected.size} onDelete={bulkDelete} onArchive={bulkArchive}
+        onMove={bulkMove} stages={CONTENT_STAGES.map(s => ({ key:s, label:(customLabels||CONTENT_LABELS)[s]||s.toUpperCase() }))} onClear={() => setSelected(new Set())} />
       {viewMode === 'board' ? (
         <div key={fadeKey} className="content-fade" style={{ flex:1,overflow:'auto',padding:'20px 32px',display:'flex',gap:'14px' }}>
           {CONTENT_STAGES.map(stage => {
             const si = profileContent.filter(c => c.stage === stage);
             return (
               <DropColumn key={stage} stageKey={stage} label={(customLabels || CONTENT_LABELS)[stage] || stage.toUpperCase()} count={si.length} onDrop={moveContent} onRenameLabel={onRenameLabel}>
-                {si.map(c => <ContentCard key={c.id} item={c} onOpen={card => onOpenCard(card, 'content')} onArchive={archiveContent} onDelete={deleteContent} />)}
+                {si.map(c => <ContentCard key={c.id} item={c} onOpen={card => onOpenCard(card, 'content')} onArchive={archiveContent} onDelete={deleteContent} selected={selected.has(c.id)} onSelect={toggleSelect} />)}
               </DropColumn>
             );
           })}
@@ -2403,7 +2469,7 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
     <>
     <div
       draggable={!editing}
-      onDragStart={e => { e.dataTransfer.setData('text/plain', view.id); onDragStart(view.id); }}
+      onDragStart={e => { e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', view.id); onDragStart(view.id); }}
       onDragOver={e => { e.preventDefault(); onDragOver(view.id); }}
       onDrop={e => { e.preventDefault(); onDrop(view.id, e); }}
       onDragEnd={onDragEnd}

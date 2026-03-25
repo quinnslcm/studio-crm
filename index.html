@@ -252,8 +252,14 @@ function usePersistedState(key, init) {
   return [state, setState];
 }
 
-const PROFILE_COLORS = { culture:'#22d3ee','marc-randolph':'#a78bfa', quinn:'#fb923c', lightwork:'#34d399' };
-const PROFILES = [{ id:'culture',label:'@culture' },{ id:'marc-randolph',label:'Marc Randolph' },{ id:'quinn',label:'Quinn' },{ id:'lightwork',label:'Lightwork' }];
+const DEFAULT_PROFILE_COLORS = { culture:'#22d3ee','marc-randolph':'#a78bfa', quinn:'#fb923c', lightwork:'#34d399' };
+const DEFAULT_PROFILES = [{ id:'culture',label:'@culture' },{ id:'marc-randolph',label:'Marc Randolph' },{ id:'quinn',label:'Quinn' },{ id:'lightwork',label:'Lightwork' }];
+
+// Mutable globals — synced from App state so all components see updates
+let PROFILE_COLORS = { ...DEFAULT_PROFILE_COLORS, ...(JSON.parse(localStorage.getItem('studio-profile-colors') || 'null') || {}) };
+let PROFILES = JSON.parse(localStorage.getItem('studio-profiles') || 'null') || [...DEFAULT_PROFILES];
+
+const AVAILABLE_COLORS = ['#22d3ee','#a78bfa','#fb923c','#34d399','#f87171','#fbbf24','#818cf8','#fb7185','#38bdf8','#4ade80','#e879f9','#a3e635'];
 
 const initDeals = () => ({
   culture: [
@@ -1518,30 +1524,135 @@ function CalendarView({ deals, content }) {
 }
 
 /* ── Settings View ─────────────────────────────────────────────────────── */
-function SettingsView({ theme, setTheme }) {
+function SettingsView({ theme, setTheme, onProfilesChange }) {
+  const [profiles, setProfiles] = useState([...PROFILES]);
+  const [colors, setColors] = useState({ ...PROFILE_COLORS });
+  const [editingId, setEditingId] = useState(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [addingNew, setAddingNew] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newColor, setNewColor] = useState(AVAILABLE_COLORS[0]);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const saveProfiles = (newProfiles, newColors) => {
+    PROFILES.length = 0; newProfiles.forEach(p => PROFILES.push(p));
+    Object.keys(PROFILE_COLORS).forEach(k => delete PROFILE_COLORS[k]);
+    Object.assign(PROFILE_COLORS, newColors);
+    localStorage.setItem('studio-profiles', JSON.stringify(newProfiles));
+    localStorage.setItem('studio-profile-colors', JSON.stringify(newColors));
+    setProfiles([...newProfiles]);
+    setColors({ ...newColors });
+    if (onProfilesChange) onProfilesChange();
+  };
+
+  const startEdit = (p) => { setEditingId(p.id); setEditLabel(p.label); };
+  const saveEdit = () => {
+    if (!editLabel.trim()) return;
+    const np = profiles.map(p => p.id === editingId ? { ...p, label: editLabel.trim() } : p);
+    saveProfiles(np, colors);
+    setEditingId(null);
+  };
+  const changeColor = (pid, color) => { const nc = { ...colors, [pid]: color }; saveProfiles(profiles, nc); };
+  const addProfile = () => {
+    if (!newLabel.trim()) return;
+    const id = newLabel.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (profiles.find(p => p.id === id)) return;
+    const np = [...profiles, { id, label: newLabel.trim() }];
+    const nc = { ...colors, [id]: newColor };
+    saveProfiles(np, nc);
+    setNewLabel(''); setAddingNew(false); setNewColor(AVAILABLE_COLORS[Math.floor(Math.random()*AVAILABLE_COLORS.length)]);
+  };
+  const deleteProfile = (pid) => {
+    const np = profiles.filter(p => p.id !== pid);
+    const nc = { ...colors }; delete nc[pid];
+    saveProfiles(np, nc);
+    setConfirmDelete(null);
+  };
+
   return (
     <div style={{ flex:1,overflow:'auto',padding:'28px 32px',maxWidth:'600px' }}>
       <h1 style={{ fontSize:'15px',fontWeight:600,marginBottom:'24px' }}>Settings</h1>
 
-      <div style={{ marginBottom:'24px' }}>
+      <div style={{ marginBottom:'28px' }}>
         <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Appearance</div>
         <div style={{ display:'flex',gap:'8px' }}>
           {['dark','light'].map(t => (
             <button key={t} onClick={() => { setTheme(t); document.documentElement.setAttribute('data-theme', t); }}
-              style={{ padding:'10px 20px',background:theme===t?'var(--surface-hover)':'var(--surface)',border:`1px solid ${theme===t?'var(--green)':'var(--border)'}`,borderRadius:'var(--radius)',cursor:'pointer',color:theme===t?'var(--text)':'var(--text-secondary)',fontSize:'13px',fontWeight:500,textTransform:'capitalize' }}>{t} mode</button>
+              style={{ padding:'10px 20px',background:theme===t?'var(--surface-hover)':'var(--surface)',border:'1px solid '+(theme===t?'var(--green)':'var(--border)'),borderRadius:'var(--radius)',cursor:'pointer',color:theme===t?'var(--text)':'var(--text-secondary)',fontSize:'13px',fontWeight:500,textTransform:'capitalize' }}>{t} mode</button>
           ))}
         </div>
       </div>
 
-      <div style={{ marginBottom:'24px' }}>
-        <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Profiles</div>
-        {PROFILES.map(p => { const c = PROFILE_COLORS[p.id]; return (
+      <div style={{ marginBottom:'28px' }}>
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'10px' }}>
+          <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)' }}>Profiles</div>
+          {!addingNew && <button onClick={() => setAddingNew(true)} style={{ padding:'4px 12px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'11px',cursor:'pointer' }}>+ Add</button>}
+        </div>
+
+        {profiles.map(p => { const c = colors[p.id] || '#888'; return (
           <div key={p.id} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'10px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',marginBottom:'6px' }}>
-            <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:c }} />
-            <span style={{ fontSize:'13px',flex:1 }}>{p.label}</span>
-            <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>Active</span>
+            {/* Color picker */}
+            <div style={{ position:'relative' }}>
+              <button onClick={() => setEditingId(editingId === p.id+'_color' ? null : p.id+'_color')} style={{ width:'20px',height:'20px',borderRadius:'50%',background:c,border:'2px solid var(--border-light)',cursor:'pointer',padding:0 }} />
+              {editingId === p.id+'_color' && (
+                <div style={{ position:'absolute',top:'100%',left:0,zIndex:50,background:'var(--dropdown-bg)',backdropFilter:'blur(16px)',border:'1px solid var(--border-light)',borderRadius:'var(--radius)',padding:'8px',display:'flex',gap:'4px',flexWrap:'wrap',width:'140px',marginTop:'4px',boxShadow:'0 8px 24px rgba(0,0,0,0.2)' }}>
+                  {AVAILABLE_COLORS.map(clr => (
+                    <button key={clr} onClick={() => { changeColor(p.id, clr); setEditingId(null); }}
+                      style={{ width:'22px',height:'22px',borderRadius:'50%',background:clr,border:clr===c?'2px solid var(--text)':'2px solid transparent',cursor:'pointer',padding:0 }} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Label — editable on click */}
+            {editingId === p.id ? (
+              <input autoFocus value={editLabel} onChange={e => setEditLabel(e.target.value)}
+                onBlur={saveEdit} onKeyDown={e => { if(e.key==='Enter') saveEdit(); if(e.key==='Escape') setEditingId(null); }}
+                style={{ fontSize:'13px',flex:1,padding:'2px 6px',background:'var(--surface-hover)',borderRadius:'4px',border:'1px solid var(--border-light)' }} />
+            ) : (
+              <span onClick={() => startEdit(p)} style={{ fontSize:'13px',flex:1,cursor:'text' }}>{p.label}</span>
+            )}
+
+            {/* Edit button */}
+            {editingId !== p.id && (
+              <button onClick={() => startEdit(p)} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'11px',padding:'2px 6px' }}>edit</button>
+            )}
+
+            {/* Delete button */}
+            {confirmDelete === p.id ? (
+              <div style={{ display:'flex',gap:'4px',alignItems:'center' }}>
+                <span style={{ fontSize:'11px',color:'var(--red)' }}>delete?</span>
+                <button onClick={() => deleteProfile(p.id)} style={{ background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:'11px',fontWeight:600 }}>yes</button>
+                <button onClick={() => setConfirmDelete(null)} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'11px' }}>no</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDelete(p.id)} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'13px',padding:'2px 6px',opacity:0.5 }}
+                onMouseEnter={e => e.currentTarget.style.opacity=1} onMouseLeave={e => e.currentTarget.style.opacity=0.5}>&times;</button>
+            )}
           </div>);
         })}
+
+        {/* Add new profile */}
+        {addingNew && (
+          <div style={{ display:'flex',alignItems:'center',gap:'10px',padding:'10px 14px',background:'var(--surface)',border:'1px dashed var(--green)',borderRadius:'var(--radius-sm)',marginBottom:'6px' }}>
+            <div style={{ position:'relative' }}>
+              <button onClick={() => setEditingId(editingId === '_new_color' ? null : '_new_color')} style={{ width:'20px',height:'20px',borderRadius:'50%',background:newColor,border:'2px solid var(--border-light)',cursor:'pointer',padding:0 }} />
+              {editingId === '_new_color' && (
+                <div style={{ position:'absolute',top:'100%',left:0,zIndex:50,background:'var(--dropdown-bg)',backdropFilter:'blur(16px)',border:'1px solid var(--border-light)',borderRadius:'var(--radius)',padding:'8px',display:'flex',gap:'4px',flexWrap:'wrap',width:'140px',marginTop:'4px',boxShadow:'0 8px 24px rgba(0,0,0,0.2)' }}>
+                  {AVAILABLE_COLORS.map(clr => (
+                    <button key={clr} onClick={() => { setNewColor(clr); setEditingId(null); }}
+                      style={{ width:'22px',height:'22px',borderRadius:'50%',background:clr,border:clr===newColor?'2px solid var(--text)':'2px solid transparent',cursor:'pointer',padding:0 }} />
+                  ))}
+                </div>
+              )}
+            </div>
+            <input autoFocus value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Profile name..."
+              onKeyDown={e => { if(e.key==='Enter') addProfile(); if(e.key==='Escape') { setAddingNew(false); setNewLabel(''); } }}
+              style={{ fontSize:'13px',flex:1,padding:'2px 6px' }} />
+            <button onClick={addProfile} style={{ background:'none',border:'none',color:'var(--green)',cursor:'pointer',fontSize:'12px',fontWeight:600 }}>Add</button>
+            <button onClick={() => { setAddingNew(false); setNewLabel(''); }} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+          </div>
+        )}
       </div>
 
       <div>
@@ -1968,7 +2079,7 @@ function App() {
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
-      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} />}
+      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} />}
       {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} onArchive={handleArchiveCard} />}
     </div>
   );

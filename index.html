@@ -2290,16 +2290,16 @@ function InteractiveGrid() {
       const mx = mouseRef.current.x;
       const my = mouseRef.current.y;
       const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-      const baseAlpha = isDark ? 0.12 : 0.08;
-      const glowRadius = 180;
+      const baseAlpha = isDark ? 0.04 : 0.03;
+      const glowRadius = 140;
 
       ctx.clearRect(0, 0, w, h);
 
       // Draw grid lines (very subtle)
       for (let x = 0; x <= w; x += spacing) {
         const dist = Math.abs(x - mx);
-        const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.25 : 0;
-        const alpha = baseAlpha * 0.4 + glow;
+        const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.08 : 0;
+        const alpha = baseAlpha * 0.3 + glow;
         ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
         ctx.lineWidth = 0.5;
         ctx.beginPath();
@@ -2309,8 +2309,8 @@ function InteractiveGrid() {
       }
       for (let y = 0; y <= h; y += spacing) {
         const dist = Math.abs(y - my);
-        const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.25 : 0;
-        const alpha = baseAlpha * 0.4 + glow;
+        const glow = dist < glowRadius ? (1 - dist / glowRadius) * 0.08 : 0;
+        const alpha = baseAlpha * 0.3 + glow;
         ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
         ctx.lineWidth = 0.5;
         ctx.beginPath();
@@ -2326,11 +2326,11 @@ function InteractiveGrid() {
           const dy = y - my;
           const dist = Math.sqrt(dx * dx + dy * dy);
           const glow = dist < glowRadius ? (1 - dist / glowRadius) : 0;
-          const alpha = baseAlpha + glow * 0.55;
-          const size = crossSize + glow * 2;
+          const alpha = baseAlpha + glow * 0.18;
+          const size = crossSize + glow * 1.5;
 
           ctx.strokeStyle = isDark ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
-          ctx.lineWidth = glow > 0.3 ? 1.2 : 0.8;
+          ctx.lineWidth = glow > 0.3 ? 0.8 : 0.5;
 
           // Horizontal tick
           ctx.beginPath();

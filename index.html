@@ -2395,7 +2395,7 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
       draggable={!editing}
       onDragStart={e => { e.dataTransfer.setData('text/plain', view.id); onDragStart(view.id); }}
       onDragOver={e => { e.preventDefault(); onDragOver(view.id); }}
-      onDrop={e => { e.preventDefault(); onDrop(view.id); }}
+      onDrop={e => { e.preventDefault(); onDrop(view.id, e); }}
       onDragEnd={onDragEnd}
       onClick={() => { if (!editing) onClick(view.id); }}
       onDoubleClick={e => { e.stopPropagation(); setEditing(true); setEditLabel(view.label); }}
@@ -2475,18 +2475,36 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
     setDragId(null); setDragOverId(null);
   };
 
-  const handleDrop = (targetId) => {
+  const handleDrop = (targetId, e) => {
     if (!dragId || dragId === targetId) { setDragId(null); setDragOverId(null); return; }
     const dragView = sidebarViews.find(v => v.id === dragId);
     const targetView = sidebarViews.find(v => v.id === targetId);
     if (!dragView || !targetView) { setDragId(null); setDragOverId(null); return; }
 
-    if (dragView.parent) {
-      // Dragging a nested item — unnest it (drop anywhere = unnest)
-      handleUnnest(dragId);
-    } else if (!targetView.parent && !dragView.parent) {
-      // Dragging a top-level item onto another top-level item → nest under it
+    const shiftHeld = e && e.shiftKey;
+
+    if (shiftHeld && !targetView.parent && !dragView.parent) {
+      // Shift+drop = nest under target
       handleNestUnder(dragId, targetId);
+    } else if (dragView.parent && !targetView.parent) {
+      // Nested item dropped on top-level = unnest and place after target
+      setSidebarViews(prev => {
+        const updated = prev.map(v => v.id === dragId ? { ...v, parent: undefined } : v);
+        const without = updated.filter(v => v.id !== dragId);
+        const moved = updated.find(v => v.id === dragId);
+        const targetIdx = without.findIndex(v => v.id === targetId);
+        without.splice(targetIdx + 1, 0, moved);
+        return without;
+      });
+    } else {
+      // Default: reorder (move dragged item to target's position)
+      setSidebarViews(prev => {
+        const without = prev.filter(v => v.id !== dragId);
+        const moved = prev.find(v => v.id === dragId);
+        const targetIdx = without.findIndex(v => v.id === targetId);
+        without.splice(targetIdx, 0, moved);
+        return without;
+      });
     }
     setDragId(null);
     setDragOverId(null);
@@ -2659,19 +2677,21 @@ function InteractiveGrid() {
 
 /* ── App ───────────────────────────────────────────────────────────────── */
 function App() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [user, setUser] = useState(null);
 
   // Check if already logged in
   useEffect(() => {
-    if (!sb) { setAuthed(true); return; } // No Supabase = skip auth
+    if (!sb) { setAuthed(true); setLoading(true); setCheckingSession(false); return; }
     sb.auth.getUser().then(({ data }) => {
-      if (data && data.user) { setUser(data.user); setAuthed(true); }
+      if (data && data.user) { setUser(data.user); setAuthed(true); setLoading(true); }
+      setCheckingSession(false);
     });
   }, []);
 
-  const handleAuth = (u) => { setUser(u); setAuthed(true); };
+  const handleAuth = (u) => { setUser(u); setAuthed(true); setLoading(true); };
 
   const [activeView, setActiveView] = usePersistedState('studio-view', 'deals');
   const [activeProfile, setActiveProfile] = usePersistedState('studio-profile', 'marc-randolph');
@@ -2688,6 +2708,7 @@ function App() {
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
 
+  if (checkingSession) return <div style={{ width:'100vw',height:'100vh',background:'#fff' }} />;
   if (!authed) return <AuthScreen onAuth={handleAuth} />;
   if (loading) return <LoadingScreen onDone={() => setLoading(false)} />;
 

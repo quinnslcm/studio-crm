@@ -65,6 +65,12 @@
       0% { opacity: 0; transform: translateY(6px); }
       100% { opacity: 1; transform: translateY(0); }
     }
+    @keyframes cardFadeIn {
+      0% { opacity: 0; transform: translateY(4px) scale(0.98); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .card-enter { animation: cardFadeIn 0.3s ease-out; }
+    .card-dragging { opacity: 0.4; transform: scale(0.95); }
     .glow-pulse { animation: glowPulse 0.6s ease-out; }
     .dropdown-enter { animation: glowFadeIn 0.2s ease-out; }
     .modal-enter { animation: modalGlow 0.35s ease-out; }
@@ -567,6 +573,7 @@ const DEAL_LABELS = { lead:'LEAD',outreach:'OUTREACH',negotiating:'NEGOTIATING',
 const CONTENT_STAGES = ['source','tweets','platform-ready','posted'];
 const CONTENT_LABELS = { source:'SOURCE',tweets:'TWEETS','platform-ready':'PLATFORM READY',posted:'POSTED' };
 const TYPE_COLORS = { 'Long-form':'#a78bfa','Carousel':'#a78bfa','Short-form':'#60a5fa','Thread':'#fb923c' };
+const STAGE_VALUE_COLORS = { lead:'var(--text-muted)', outreach:'#60a5fa', negotiating:'#f59e0b', closed:'#10b981', lost:'#ef4444' };
 
 /* ── Ideas data ────────────────────────────────────────────────────────── */
 const timeAgo = (iso) => {
@@ -979,11 +986,11 @@ function DealCard({ deal, profileId, onOpen, onArchive, onDelete, selected, onSe
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
-    <div draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
+    <div className="card-enter" draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
       onClick={(e) => { if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); onSelect && onSelect(deal.id, e); } else { onOpen(deal); } }}
       onContextMenu={handleContext}
-      style={{ background: selected ? 'var(--surface-hover)' : 'var(--surface)',border: selected ? '1px solid var(--green)' : '1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s, background 0.15s',position:'relative' }}
+      style={{ background: selected ? 'var(--surface-hover)' : 'var(--surface)',border: selected ? '1px solid var(--green)' : '1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s, background 0.15s, transform 0.2s ease, opacity 0.2s ease',position:'relative' }}
       onMouseEnter={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border-light)';setHover(true);}} onMouseLeave={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border)';setHover(false);}}>
       {(hover || selected) && (
         <div onClick={e=>{e.stopPropagation(); onSelect && onSelect(deal.id, e);}}
@@ -998,7 +1005,7 @@ function DealCard({ deal, profileId, onOpen, onArchive, onDelete, selected, onSe
           <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:color }} />
           <span style={{ fontSize:'11px',color:'var(--text-secondary)' }}>{label}</span>
         </div>
-        <span style={{ fontSize:'13px',fontWeight:600,color:'var(--green)' }}>{fmtFull(deal.value)}</span>
+        <span style={{ fontSize:'13px',fontWeight:600,color:STAGE_VALUE_COLORS[deal.stage]||'var(--green)',transition:'color 0.4s ease' }}>{fmtFull(deal.value)}</span>
       </div>
       <div style={{ fontSize:'13.5px',fontWeight:600,lineHeight:1.4,marginBottom:'6px',letterSpacing:'-0.01em' }}>{deal.title}</div>
       <div style={{ fontSize:'11.5px',color:'var(--text-muted)' }}>{deal.assignee}</div>
@@ -1022,11 +1029,11 @@ function ContentCard({ item, onOpen, onArchive, onDelete, selected, onSelect }) 
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
-    <div draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
+    <div className="card-enter" draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
       onClick={(e) => { if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); onSelect && onSelect(item.id, e); } else { onOpen(item); } }}
       onContextMenu={handleContext}
-      style={{ background: selected ? 'var(--surface-hover)' : 'var(--surface)',border: selected ? '1px solid var(--green)' : '1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s, background 0.15s',position:'relative' }}
+      style={{ background: selected ? 'var(--surface-hover)' : 'var(--surface)',border: selected ? '1px solid var(--green)' : '1px solid var(--border)',borderRadius:'var(--radius)',padding:'14px',cursor:'grab',transition:'border-color 0.15s, background 0.15s, transform 0.2s ease, opacity 0.2s ease',position:'relative' }}
       onMouseEnter={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border-light)';setHover(true);}} onMouseLeave={e=>{if(!selected)e.currentTarget.style.borderColor='var(--border)';setHover(false);}}>
       {(hover || selected) && (
         <div onClick={e=>{e.stopPropagation(); onSelect && onSelect(item.id, e);}}
@@ -1379,7 +1386,7 @@ function DealRow({ deal, profileId, onOpen }) {
       <span style={{ width:'7px',height:'7px',borderRadius:'50%',background:color,flexShrink:0 }} />
       <span style={{ flex:1,fontSize:'13px',fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{deal.title}</span>
       <span style={{ fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',width:'90px',textAlign:'center' }}>{deal.stage}</span>
-      <span style={{ fontSize:'12px',fontWeight:600,color:'var(--green)',width:'80px',textAlign:'right' }}>{fmtFull(deal.value)}</span>
+      <span style={{ fontSize:'12px',fontWeight:600,color:STAGE_VALUE_COLORS[deal.stage]||'var(--green)',width:'80px',textAlign:'right',transition:'color 0.4s ease' }}>{fmtFull(deal.value)}</span>
       <span style={{ fontSize:'11px',color:'var(--text-muted)',width:'60px',textAlign:'right' }}>{deal.assignee}</span>
     </div>
   );

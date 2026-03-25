@@ -3155,7 +3155,7 @@ function App() {
 
   const handleAuth = (u) => { setUser(u); setAuthed(true); setLoading(true); };
 
-  const [activeView, setActiveView] = useSupabaseState('studio-view', 'deals', user);
+  const [activeView, setActiveView] = useState('deals');
   const [activeProfile, setActiveProfile] = useSupabaseState('studio-profile', 'marc-randolph', user);
   const [deals, setDeals] = useSupabaseState('studio-deals', initDeals, user);
   const [content, setContent] = useSupabaseState('studio-content', initContent, user);
@@ -3227,7 +3227,7 @@ function App() {
               // Clear data localStorage so next login re-fetches from Supabase
               ['studio-deals','studio-content','studio-ideas','studio-contacts','studio-archive',
                'studio-idea-folders','studio-custom-labels','studio-quicklinks','studio-sidebar-views',
-               'studio-theme','studio-view','studio-profile','studio-cal-events'].forEach(k => localStorage.removeItem(k));
+               'studio-theme','studio-profile','studio-cal-events'].forEach(k => localStorage.removeItem(k));
               setUser(null); setAuthed(false);
             }} />}
       {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} onArchive={handleArchiveCard} />}

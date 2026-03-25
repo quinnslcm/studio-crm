@@ -1840,13 +1840,12 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
     const targetView = sidebarViews.find(v => v.id === targetId);
     if (!dragView || !targetView) { setDragId(null); setDragOverId(null); return; }
 
-    // Drop on a top-level item → nest under it
-    if (!targetView.parent) {
-      handleNestUnder(dragId, targetId);
-    }
-    // Drop on a child → unnest the dragged item (move to top level)
-    else if (dragView.parent) {
+    if (dragView.parent) {
+      // Dragging a nested item — unnest it (drop anywhere = unnest)
       handleUnnest(dragId);
+    } else if (!targetView.parent && !dragView.parent) {
+      // Dragging a top-level item onto another top-level item → nest under it
+      handleNestUnder(dragId, targetId);
     }
     setDragId(null);
     setDragOverId(null);
@@ -1867,12 +1866,13 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
           <input placeholder="Search..." style={{ fontSize:'12px',width:'100%' }} />
         </div>
       </div>
-      <div style={{ padding:'14px 10px 0', flex:1 }}>
-        <div onDragOver={e => { e.preventDefault(); setDragOverId('__views_header__'); }}
-          onDragLeave={() => { if(dragOverId==='__views_header__') setDragOverId(null); }}
-          onDrop={handleViewsHeaderDrop}
-          style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color: dragOverId === '__views_header__' ? 'var(--green)' : 'var(--text-muted)',padding: dragId ? '8px 10px' : '0 10px 6px',transition:'all 0.15s',borderRadius:'6px',background:dragOverId==='__views_header__'?'rgba(16,185,129,0.08)':'transparent',border: dragId ? '1px dashed '+(dragOverId==='__views_header__'?'var(--green)':'var(--border)'):'1px dashed transparent',marginBottom: dragId ? '4px' : '0' }}>
-          Views {dragId && <span style={{ fontSize:'9px',fontWeight:400,letterSpacing:'0.02em',opacity:0.7 }}> · drop to unnest</span>}
+      <div
+        onDragOver={e => { e.preventDefault(); if(!dragOverId || dragOverId === '__views_area__') setDragOverId('__views_area__'); }}
+        onDragLeave={e => { if(!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null); }}
+        onDrop={e => { e.preventDefault(); if(dragId) handleUnnest(dragId); setDragId(null); setDragOverId(null); }}
+        style={{ padding:'14px 10px 0', flex:1, borderRadius:'8px', background: dragOverId === '__views_area__' && dragId && (sidebarViews.find(v=>v.id===dragId)||{}).parent ? 'rgba(16,185,129,0.04)' : 'transparent', transition:'background 0.15s' }}>
+        <div style={{ fontSize:'10px',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color: dragOverId === '__views_area__' && dragId && (sidebarViews.find(v=>v.id===dragId)||{}).parent ? 'var(--green)' : 'var(--text-muted)',padding:'0 10px 6px',transition:'color 0.15s' }}>
+          Views {dragId && (sidebarViews.find(v=>v.id===dragId)||{}).parent && <span style={{ fontSize:'9px',fontWeight:400,letterSpacing:'0.02em',opacity:0.7 }}> · drop here to unnest</span>}
         </div>
         {topLevel.map(v => {
           const children = getChildren(v.id);

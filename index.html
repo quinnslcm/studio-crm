@@ -212,6 +212,136 @@ function useSupabaseState(key, table, defaultVal) {
   return [data, setAndSync];
 }
 
+/* ── Auth Screen ─────────────────────────────────────────────────── */
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState('login'); // login | signup | forgot
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || (!password.trim() && mode !== 'forgot')) return;
+    setError(''); setSuccess(''); setLoading(true);
+    try {
+      if (mode === 'login') {
+        const { data, error: err } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+        if (err) throw err;
+        onAuth(data.user);
+      } else if (mode === 'signup') {
+        const { data, error: err } = await sb.auth.signUp({ email: email.trim(), password });
+        if (err) throw err;
+        if (data.user && !data.user.confirmed_at) {
+          setSuccess('Check your email for a confirmation link.');
+        } else {
+          onAuth(data.user);
+        }
+      } else if (mode === 'forgot') {
+        const { error: err } = await sb.auth.resetPasswordForEmail(email.trim());
+        if (err) throw err;
+        setSuccess('Password reset email sent. Check your inbox.');
+      }
+    } catch (err) {
+      setError(err.message || 'Something went wrong');
+    }
+    setLoading(false);
+  };
+
+  const handleSkip = () => onAuth(null);
+
+  const inputStyle = {
+    width:'100%', padding:'12px 16px', background:'var(--surface)', border:'1px solid var(--border)',
+    borderRadius:'var(--radius)', color:'var(--text)', fontSize:'14px', fontFamily:'DM Sans, sans-serif',
+    outline:'none', transition:'border-color 0.2s'
+  };
+  const btnStyle = {
+    width:'100%', padding:'12px', background:'var(--green)', color:'#fff', border:'none',
+    borderRadius:'var(--radius)', fontSize:'14px', fontWeight:600, fontFamily:'DM Sans, sans-serif',
+    cursor:'pointer', transition:'opacity 0.2s', opacity: loading ? 0.6 : 1
+  };
+
+  return (
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center',
+      background:'var(--bg)', fontFamily:'DM Sans, sans-serif', position:'relative', overflow:'hidden' }}>
+      <InteractiveGrid />
+      <div style={{ width:'100%', maxWidth:'380px', padding:'24px', position:'relative', zIndex:2 }}>
+        {/* Logo */}
+        <div style={{ textAlign:'center', marginBottom:'40px' }}>
+          <div style={{ fontSize:'18px', fontWeight:300, letterSpacing:'0.35em', color:'var(--text)', marginBottom:'8px' }}>
+            s t u d i o
+          </div>
+          <div style={{ fontSize:'12px', color:'var(--text-muted)', letterSpacing:'0.1em' }}>
+            {mode === 'login' ? 'Sign in to your workspace' : mode === 'signup' ? 'Create your workspace' : 'Reset your password'}
+          </div>
+        </div>
+
+        {/* Form card */}
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'12px', padding:'28px' }}>
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom:'16px' }}>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:600, color:'var(--text-muted)',
+                letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:'6px' }}>Email</label>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com" style={inputStyle}
+                onFocus={e => e.target.style.borderColor='var(--green)'}
+                onBlur={e => e.target.style.borderColor='var(--border)'} />
+            </div>
+
+            {mode !== 'forgot' && (
+              <div style={{ marginBottom:'20px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
+                  <label style={{ fontSize:'11px', fontWeight:600, color:'var(--text-muted)',
+                    letterSpacing:'0.06em', textTransform:'uppercase' }}>Password</label>
+                  {mode === 'login' && (
+                    <span onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
+                      style={{ fontSize:'11px', color:'var(--green)', cursor:'pointer' }}>Forgot?</span>
+                  )}
+                </div>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••" style={inputStyle}
+                  onFocus={e => e.target.style.borderColor='var(--green)'}
+                  onBlur={e => e.target.style.borderColor='var(--border)'} />
+              </div>
+            )}
+
+            {error && <div style={{ fontSize:'12px', color:'var(--red)', marginBottom:'12px', padding:'8px 12px',
+              background:'rgba(239,68,68,0.08)', borderRadius:'var(--radius-sm)' }}>{error}</div>}
+            {success && <div style={{ fontSize:'12px', color:'var(--green)', marginBottom:'12px', padding:'8px 12px',
+              background:'rgba(16,185,129,0.08)', borderRadius:'var(--radius-sm)' }}>{success}</div>}
+
+            <button type="submit" style={btnStyle} disabled={loading}>
+              {loading ? '...' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
+            </button>
+          </form>
+
+          <div style={{ textAlign:'center', marginTop:'16px', fontSize:'13px', color:'var(--text-muted)' }}>
+            {mode === 'login' ? (
+              <>Don't have an account? <span onClick={() => { setMode('signup'); setError(''); setSuccess(''); }}
+                style={{ color:'var(--green)', cursor:'pointer' }}>Sign up</span></>
+            ) : (
+              <>Already have an account? <span onClick={() => { setMode('login'); setError(''); setSuccess(''); }}
+                style={{ color:'var(--green)', cursor:'pointer' }}>Sign in</span></>
+            )}
+          </div>
+        </div>
+
+        {/* Skip / local mode */}
+        <div style={{ textAlign:'center', marginTop:'20px' }}>
+          <span onClick={handleSkip}
+            style={{ fontSize:'12px', color:'var(--text-muted)', cursor:'pointer', opacity:0.6,
+              transition:'opacity 0.2s' }}
+            onMouseEnter={e => e.target.style.opacity = 1}
+            onMouseLeave={e => e.target.style.opacity = 0.6}>
+            Continue without account →
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Loading Screen ──────────────────────────────────────────────── */
 function LoadingScreen({ onDone }) {
   const [pct, setPct] = React.useState(0);
@@ -1818,7 +1948,7 @@ function CalendarView({ deals, content, activeProfile }) {
 }
 
 /* ── Settings View ─────────────────────────────────────────────────────── */
-function SettingsView({ theme, setTheme, onProfilesChange }) {
+function SettingsView({ theme, setTheme, onProfilesChange, user, onLogout }) {
   const [profiles, setProfiles] = useState([...PROFILES]);
   const [colors, setColors] = useState({ ...PROFILE_COLORS });
   const [editingId, setEditingId] = useState(null);
@@ -1945,6 +2075,34 @@ function SettingsView({ theme, setTheme, onProfilesChange }) {
               style={{ fontSize:'13px',flex:1,padding:'2px 6px' }} />
             <button onClick={addProfile} style={{ background:'none',border:'none',color:'var(--green)',cursor:'pointer',fontSize:'12px',fontWeight:600 }}>Add</button>
             <button onClick={() => { setAddingNew(false); setNewLabel(''); }} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'13px' }}>&times;</button>
+          </div>
+        )}
+      </div>
+
+      {/* Account */}
+      <div style={{ marginBottom:'28px' }}>
+        <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Account</div>
+        {user ? (
+          <div>
+            <div style={{ display:'flex',alignItems:'center',gap:'10px',padding:'12px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',marginBottom:'8px' }}>
+              <div style={{ width:'32px',height:'32px',borderRadius:'50%',background:'var(--green)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',fontWeight:600,color:'#fff' }}>
+                {(user.email || '?')[0].toUpperCase()}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:'13px',fontWeight:500 }}>{user.email}</div>
+                <div style={{ fontSize:'11px',color:'var(--text-muted)' }}>Synced to Supabase</div>
+              </div>
+              <div style={{ width:'8px',height:'8px',borderRadius:'50%',background:'var(--green)' }} />
+            </div>
+            <button onClick={onLogout}
+              style={{ padding:'8px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text-secondary)',fontSize:'12px',fontWeight:500,cursor:'pointer' }}>
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <div style={{ padding:'12px 14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)' }}>
+            <div style={{ fontSize:'13px',color:'var(--text-secondary)',marginBottom:'8px' }}>Not signed in — data saved locally only</div>
+            <div style={{ fontSize:'11px',color:'var(--text-muted)' }}>Sign in to sync your data across devices</div>
           </div>
         )}
       </div>
@@ -2419,6 +2577,19 @@ function InteractiveGrid() {
 /* ── App ───────────────────────────────────────────────────────────────── */
 function App() {
   const [loading, setLoading] = useState(true);
+  const [authed, setAuthed] = useState(false);
+  const [user, setUser] = useState(null);
+
+  // Check if already logged in
+  useEffect(() => {
+    if (!sb) { setAuthed(true); return; } // No Supabase = skip auth
+    sb.auth.getUser().then(({ data }) => {
+      if (data && data.user) { setUser(data.user); setAuthed(true); }
+    });
+  }, []);
+
+  const handleAuth = (u) => { setUser(u); setAuthed(true); };
+
   const [activeView, setActiveView] = usePersistedState('studio-view', 'deals');
   const [activeProfile, setActiveProfile] = usePersistedState('studio-profile', 'marc-randolph');
   const [deals, setDeals] = usePersistedState('studio-deals', initDeals);
@@ -2434,6 +2605,7 @@ function App() {
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
 
+  if (!authed) return <AuthScreen onAuth={handleAuth} />;
   if (loading) return <LoadingScreen onDone={() => setLoading(false)} />;
 
   const handleOpenCard = (card, type) => { setOpenCard(card); setOpenCardType(type); };
@@ -2477,7 +2649,7 @@ function App() {
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
-      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} />}
+      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} user={user} onLogout={async () => { if (sb) await sb.auth.signOut(); setUser(null); setAuthed(false); }} />}
       {openCard && <CardDetail card={openCard} color={PROFILE_COLORS[activeProfile]} onClose={handleCloseCard} onUpdate={handleUpdateCard} onArchive={handleArchiveCard} />}
     </div>
   );

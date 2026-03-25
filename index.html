@@ -1581,10 +1581,13 @@ function IdeaCard({ idea, onDelete, onStar, onConvert, onUpdate }) {
   };
   return (
     <>
-    <div onContextMenu={e=>{e.preventDefault();setCtx({x:e.clientX,y:e.clientY});}}
+    <div draggable={!editing}
+      onDragStart={e=>{ e.dataTransfer.effectAllowed='move'; dragData={id:idea.id,type:'idea'}; e.currentTarget.style.opacity='0.5'; }}
+      onDragEnd={e=>{ e.currentTarget.style.opacity='1'; dragData=null; }}
+      onContextMenu={e=>{e.preventDefault();setCtx({x:e.clientX,y:e.clientY});}}
       onMouseEnter={()=>setHoverX(true)} onMouseLeave={()=>setHoverX(false)}
       onClick={()=>{ if(!editing) setEditing(true); }}
-      style={{ background:'var(--surface)',border:'1px solid '+(editing?'var(--border-light)':'var(--border)'),borderRadius:'var(--radius)',padding:'16px',transition:'border-color 0.15s',position:'relative',cursor:editing?'default':'pointer' }}
+      style={{ background:'var(--surface)',border:'1px solid '+(editing?'var(--border-light)':'var(--border)'),borderRadius:'var(--radius)',padding:'16px',transition:'border-color 0.15s, opacity 0.15s',position:'relative',cursor:editing?'default':'grab' }}
       onMouseOver={e=>{if(!editing)e.currentTarget.style.borderColor='var(--border-light)';}} onMouseOut={e=>{if(!editing)e.currentTarget.style.borderColor='var(--border)';}}>
       {/* Star + Delete */}
       <div style={{ position:'absolute',top:'10px',right:'10px',display:'flex',gap:'4px',alignItems:'center' }}>
@@ -1630,28 +1633,46 @@ function IdeaCard({ idea, onDelete, onStar, onConvert, onUpdate }) {
   );
 }
 
-function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, setContent }) {
+function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, setContent, ideaFolders, setIdeaFolders }) {
   const [search, setSearch] = useState('');
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState('');
   const [newTags, setNewTags] = useState('');
   const [newSource, setNewSource] = useState('');
   const [convertIdea, setConvertIdea] = useState(null);
+  const [activeFolder, setActiveFolder] = useState(null);
+  const [addingFolder, setAddingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [dragOverFolder, setDragOverFolder] = useState(null);
+  const [confirmDelFolder, setConfirmDelFolder] = useState(null);
+  const [renamingFolder, setRenamingFolder] = useState(null);
+  const [renameVal, setRenameVal] = useState('');
   const inputRef = useRef(null);
+  const folderInputRef = useRef(null);
+  const renameInputRef = useRef(null);
   useEffect(() => { if (adding && inputRef.current) inputRef.current.focus(); }, [adding]);
+  useEffect(() => { if (addingFolder && folderInputRef.current) folderInputRef.current.focus(); }, [addingFolder]);
+  useEffect(() => { if (renamingFolder && renameInputRef.current) { renameInputRef.current.focus(); renameInputRef.current.select(); } }, [renamingFolder]);
 
   const profileIdeas = ideas[activeProfile] || [];
+  const folders = (ideaFolders && ideaFolders[activeProfile]) || [];
   const profileCounts = {};
   PROFILES.forEach(p => { profileCounts[p.id] = (ideas[p.id]||[]).length; });
 
-  // Filter
-  const filtered = profileIdeas.filter(i => {
+  // Filter by folder then by search
+  const folderFiltered = activeFolder
+    ? profileIdeas.filter(i => i.folder === activeFolder)
+    : profileIdeas.filter(i => !i.folder);
+  const filtered = folderFiltered.filter(i => {
     return (i.text + i.tags.join(' ') + (i.source||'')).toLowerCase().includes(search.toLowerCase());
   }).sort((a, b) => {
     if (a.starred && !b.starred) return -1;
     if (!a.starred && b.starred) return 1;
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
+
+  const folderCounts = {};
+  folders.forEach(f => { folderCounts[f] = profileIdeas.filter(i => i.folder === f).length; });
 
   const addIdea = () => {
     if (!newText.trim()) return;
@@ -1662,6 +1683,7 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
       source: newSource.trim() || null,
       createdAt: new Date().toISOString(),
       starred: false,
+      folder: activeFolder || null,
     };
     setIdeas(prev => ({ ...prev, [activeProfile]: [idea, ...(prev[activeProfile]||[])] }));
     setNewText(''); setNewTags(''); setNewSource(''); setAdding(false);
@@ -1674,6 +1696,43 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
     setContent(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), newItem] }));
     removeIdea(convertIdea.id);
     setConvertIdea(null);
+  };
+  // Folder actions
+  const createFolder = () => {
+    if (!newFolderName.trim()) { setAddingFolder(false); return; }
+    setIdeaFolders(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), newFolderName.trim()] }));
+    setNewFolderName(''); setAddingFolder(false);
+  };
+  const deleteFolder = (name) => {
+    // Move all ideas in folder back to root
+    setIdeas(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).map(i => i.folder === name ? { ...i, folder: null } : i) }));
+    setIdeaFolders(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).filter(f => f !== name) }));
+    if (activeFolder === name) setActiveFolder(null);
+    setConfirmDelFolder(null);
+  };
+  const renameFolder = (oldName) => {
+    if (!renameVal.trim() || renameVal.trim() === oldName) { setRenamingFolder(null); return; }
+    const nn = renameVal.trim();
+    setIdeaFolders(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).map(f => f === oldName ? nn : f) }));
+    setIdeas(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).map(i => i.folder === oldName ? { ...i, folder: nn } : i) }));
+    if (activeFolder === oldName) setActiveFolder(nn);
+    setRenamingFolder(null);
+  };
+  // Drag into folder
+  const handleFolderDrop = (folderName) => {
+    if (dragData && dragData.type === 'idea') {
+      setIdeas(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).map(i => i.id === dragData.id ? { ...i, folder: folderName } : i) }));
+    }
+    setDragOverFolder(null);
+    dragData = null;
+  };
+  // Drag to "All Ideas" to unfolder
+  const handleUnfolder = () => {
+    if (dragData && dragData.type === 'idea') {
+      setIdeas(prev => ({ ...prev, [activeProfile]: (prev[activeProfile]||[]).map(i => i.id === dragData.id ? { ...i, folder: null } : i) }));
+    }
+    setDragOverFolder(null);
+    dragData = null;
   };
 
   return (
@@ -1689,7 +1748,104 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
             <button onClick={()=>setAdding(true)} style={{ padding:'7px 16px',background:'transparent',border:'1px solid var(--border-light)',borderRadius:'var(--radius-sm)',color:'var(--text)',fontSize:'13px',fontWeight:500,cursor:'pointer' }}>+ New</button>
           </div>
         </div>
+
+        {/* Breadcrumb */}
+        {activeFolder && (
+          <div style={{ display:'flex',alignItems:'center',gap:'6px',marginBottom:'14px',fontSize:'12px' }}>
+            <span
+              onClick={() => setActiveFolder(null)}
+              onDragOver={e => { e.preventDefault(); setDragOverFolder('__root__'); }}
+              onDragLeave={() => setDragOverFolder(null)}
+              onDrop={e => { e.preventDefault(); handleUnfolder(); }}
+              style={{ color:'var(--text-muted)',cursor:'pointer',padding:'2px 6px',borderRadius:'4px',background: dragOverFolder === '__root__' ? 'var(--surface-hover)' : 'transparent',transition:'background 0.15s' }}
+              onMouseEnter={e=>e.currentTarget.style.color='var(--text)'}
+              onMouseLeave={e=>e.currentTarget.style.color='var(--text-muted)'}>
+              All Ideas
+            </span>
+            <span style={{ color:'var(--text-muted)',fontSize:'10px' }}>/</span>
+            <span style={{ color:'var(--text)',fontWeight:500 }}>{activeFolder}</span>
+          </div>
+        )}
+
+        {/* Folders row */}
+        {!activeFolder && folders.length > 0 && (
+          <div style={{ display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'16px' }}>
+            {folders.map(f => (
+              <div key={f}
+                onClick={() => { if (renamingFolder !== f) setActiveFolder(f); }}
+                onDoubleClick={e => { e.stopPropagation(); setRenamingFolder(f); setRenameVal(f); }}
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect='move'; setDragOverFolder(f); }}
+                onDragLeave={() => setDragOverFolder(null)}
+                onDrop={e => { e.preventDefault(); handleFolderDrop(f); }}
+                style={{
+                  display:'flex',alignItems:'center',gap:'8px',padding:'10px 14px',
+                  background: dragOverFolder === f ? 'var(--surface-hover)' : 'var(--surface)',
+                  border: dragOverFolder === f ? '1px solid var(--green)' : '1px solid var(--border)',
+                  borderRadius:'var(--radius)',cursor:'pointer',transition:'all 0.15s',position:'relative',minWidth:'120px',
+                }}
+                onMouseEnter={e=>{if(dragOverFolder!==f)e.currentTarget.style.borderColor='var(--border-light)';}}
+                onMouseLeave={e=>{if(dragOverFolder!==f)e.currentTarget.style.borderColor='var(--border)';}}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ flexShrink:0 }}>
+                  <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                {renamingFolder === f ? (
+                  <input ref={renameInputRef} value={renameVal} onChange={e=>setRenameVal(e.target.value)}
+                    onClick={e=>e.stopPropagation()}
+                    onKeyDown={e=>{ if(e.key==='Enter') renameFolder(f); if(e.key==='Escape') setRenamingFolder(null); }}
+                    onBlur={()=>renameFolder(f)}
+                    style={{ fontSize:'12px',fontWeight:500,background:'transparent',border:'none',outline:'none',color:'var(--text)',width:'80px',padding:0 }} />
+                ) : (
+                  <span style={{ fontSize:'12px',fontWeight:500,color:'var(--text)' }}>{f}</span>
+                )}
+                <span style={{ fontSize:'10px',color:'var(--text-muted)',background:'var(--bg)',padding:'1px 6px',borderRadius:'8px',marginLeft:'auto' }}>{folderCounts[f]||0}</span>
+                <button onClick={e=>{e.stopPropagation();setConfirmDelFolder(f);}}
+                  style={{ position:'absolute',top:'-6px',right:'-6px',width:'18px',height:'18px',borderRadius:'50%',background:'var(--surface)',border:'1px solid var(--border)',color:'var(--text-muted)',cursor:'pointer',fontSize:'11px',display:'none',alignItems:'center',justifyContent:'center',lineHeight:1 }}
+                  className="folder-del-btn">&times;</button>
+              </div>
+            ))}
+            {/* Add folder button */}
+            {addingFolder ? (
+              <div style={{ display:'flex',alignItems:'center',gap:'6px',padding:'8px 12px',background:'var(--surface)',border:'1px dashed var(--border-light)',borderRadius:'var(--radius)' }}>
+                <input ref={folderInputRef} value={newFolderName} onChange={e=>setNewFolderName(e.target.value)}
+                  placeholder="Folder name..."
+                  onKeyDown={e=>{ if(e.key==='Enter') createFolder(); if(e.key==='Escape'){setAddingFolder(false);setNewFolderName('');} }}
+                  onBlur={createFolder}
+                  style={{ fontSize:'12px',width:'100px',background:'transparent',border:'none',outline:'none',color:'var(--text)' }} />
+              </div>
+            ) : (
+              <button onClick={()=>setAddingFolder(true)}
+                style={{ display:'flex',alignItems:'center',gap:'6px',padding:'10px 14px',background:'transparent',border:'1px dashed var(--border)',borderRadius:'var(--radius)',color:'var(--text-muted)',cursor:'pointer',fontSize:'12px',transition:'border-color 0.15s,color 0.15s' }}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--border-light)';e.currentTarget.style.color='var(--text)';}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--text-muted)';}}>
+                <span style={{ fontSize:'14px' }}>+</span> New Folder
+              </button>
+            )}
+          </div>
+        )}
+        {/* Show + New Folder when no folders exist */}
+        {!activeFolder && folders.length === 0 && (
+          <div style={{ marginBottom:'16px' }}>
+            {addingFolder ? (
+              <div style={{ display:'inline-flex',alignItems:'center',gap:'6px',padding:'8px 12px',background:'var(--surface)',border:'1px dashed var(--border-light)',borderRadius:'var(--radius)' }}>
+                <input ref={folderInputRef} value={newFolderName} onChange={e=>setNewFolderName(e.target.value)}
+                  placeholder="Folder name..."
+                  onKeyDown={e=>{ if(e.key==='Enter') createFolder(); if(e.key==='Escape'){setAddingFolder(false);setNewFolderName('');} }}
+                  onBlur={createFolder}
+                  style={{ fontSize:'12px',width:'100px',background:'transparent',border:'none',outline:'none',color:'var(--text)' }} />
+              </div>
+            ) : (
+              <button onClick={()=>setAddingFolder(true)}
+                style={{ display:'inline-flex',alignItems:'center',gap:'6px',padding:'8px 14px',background:'transparent',border:'1px dashed var(--border)',borderRadius:'var(--radius)',color:'var(--text-muted)',cursor:'pointer',fontSize:'12px' }}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--border-light)';e.currentTarget.style.color='var(--text)';}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--text-muted)';}}>
+                <span style={{ fontSize:'14px' }}>+</span> New Folder
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      <style>{`.folder-del-btn { display: none !important; } div:hover > .folder-del-btn { display: flex !important; }`}</style>
 
       {/* Quick capture */}
       {adding && (
@@ -1715,12 +1871,13 @@ function IdeasView({ ideas, setIdeas, activeProfile, setActiveProfile, content, 
         ))}
         {filtered.length === 0 && (
           <div style={{ textAlign:'center',padding:'48px 0',color:'var(--text-muted)',fontSize:'13px' }}>
-            {search || filterTag !== 'all' ? 'No ideas match your filter' : 'No ideas yet — click + New to capture one'}
+            {search ? 'No ideas match your search' : activeFolder ? 'This folder is empty — drag ideas here' : 'No ideas yet — click + New to capture one'}
           </div>
         )}
       </div>
 
       {convertIdea && <ConvertToContentModal idea={convertIdea} onConvert={handleConvert} onClose={()=>setConvertIdea(null)} />}
+      {confirmDelFolder && <ConfirmDialog message={`Delete folder "${confirmDelFolder}"? Ideas inside will be moved back to All Ideas.`} onConfirm={()=>deleteFolder(confirmDelFolder)} onCancel={()=>setConfirmDelFolder(null)} />}
     </div>
   );
 }
@@ -2777,6 +2934,12 @@ function App() {
   const [content, setContent] = useSupabaseState('studio-content', initContent, user);
   const [contacts, setContacts] = useSupabaseState('studio-contacts', initContacts, user);
   const [ideas, setIdeas] = useSupabaseState('studio-ideas', initIdeas, user);
+  const [ideaFolders, setIdeaFolders] = useSupabaseState('studio-idea-folders', () => ({
+    'marc-randolph': ['Netflix Stories', 'Carousel Ideas'],
+    'culture': ['Doc Ideas'],
+    'quinn': [],
+    'lightwork': [],
+  }), user);
   const [archive, setArchive] = useSupabaseState('studio-archive', [], user);
   const [customLabels, setCustomLabels] = useSupabaseState('studio-custom-labels', { deal: { ...DEAL_LABELS }, content: { ...CONTENT_LABELS } }, user);
   const [quickLinks, setQuickLinks] = useSupabaseState('studio-quicklinks', defaultProfileLinks, user);
@@ -2828,7 +2991,7 @@ function App() {
       <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} activeProfile={activeProfile} setActiveProfile={setActiveProfile} profileCounts={(() => { const c = {}; PROFILES.forEach(p => { c[p.id] = (deals[p.id]||[]).length + (content[p.id]||[]).length + (ideas[p.id]||[]).length; }); return c; })()} />
       {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} customLabels={customLabels.deal || DEAL_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, deal: { ...prev.deal, [stage]: name } }))} />}
       {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} customLabels={customLabels.content || CONTENT_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, content: { ...prev.content, [stage]: name } }))} />}
-      {activeView === 'ideas' && <IdeasView ideas={ideas} setIdeas={setIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} />}
+      {activeView === 'ideas' && <IdeasView ideas={ideas} setIdeas={setIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} ideaFolders={ideaFolders} setIdeaFolders={setIdeaFolders} />}
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}

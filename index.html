@@ -1607,8 +1607,10 @@ function IdeaCard({ idea, onDelete, onStar, onConvert, onUpdate }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [ctx, setCtx] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [editText, setEditText] = useState(idea.text);
   const [editSource, setEditSource] = useState(idea.source || '');
+  const isLong = idea.text && idea.text.length > 180;
   const textRef = useRef(null);
   useEffect(() => { if (editing && textRef.current) textRef.current.focus(); }, [editing]);
   const saveEdit = () => {
@@ -1648,7 +1650,14 @@ function IdeaCard({ idea, onDelete, onStar, onConvert, onUpdate }) {
         </div>
       ) : (
         <>
-          <div style={{ fontSize:'13.5px',fontWeight:500,lineHeight:1.55,marginBottom:'8px',paddingRight:'50px',color:'var(--text)' }}>{idea.text}</div>
+          <div style={{ fontSize:'13.5px',fontWeight:500,lineHeight:1.55,marginBottom:'8px',paddingRight:'50px',color:'var(--text)',
+            ...(!expanded && isLong ? { display:'-webkit-box',WebkitLineClamp:3,WebkitBoxOrient:'vertical',overflow:'hidden' } : {})
+          }}>{idea.text}</div>
+          {isLong && (
+            <button onClick={e=>{e.stopPropagation();setExpanded(!expanded);}} style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'11px',padding:'0 0 6px',fontWeight:500 }}>
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
           {/* Meta */}
           <div style={{ display:'flex',gap:'10px',alignItems:'center',fontSize:'11px',color:'var(--text-muted)' }}>
             {idea.source && <span style={{ padding:'2px 7px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'4px' }}>{idea.source}</span>}

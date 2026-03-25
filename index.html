@@ -2284,16 +2284,22 @@ function InteractiveGrid() {
     const handleMouse = (e) => { mouseRef.current = { x: e.clientX, y: e.clientY }; };
     window.addEventListener('mousemove', handleMouse);
 
+    // Smoothed mouse position — lerps toward real mouse for fluid motion
+    const smoothMouse = { x: -1000, y: -1000 };
+
     const draw = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      const mx = mouseRef.current.x;
-      const my = mouseRef.current.y;
+      // Lerp smooth mouse toward actual mouse (0.08 = very smooth, trailing)
+      smoothMouse.x += (mouseRef.current.x - smoothMouse.x) * 0.06;
+      smoothMouse.y += (mouseRef.current.y - smoothMouse.y) * 0.06;
+      const mx = smoothMouse.x;
+      const my = smoothMouse.y;
       const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
       const baseAlpha = isDark ? 0.04 : 0.03;
       const glowRadius = 140;
-      const pushRadius = 80;
-      const pushStrength = 3;
+      const pushRadius = 90;
+      const pushStrength = 2.5;
 
       ctx.clearRect(0, 0, w, h);
 

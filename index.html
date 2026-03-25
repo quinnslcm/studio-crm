@@ -124,6 +124,17 @@ const { useState, useRef, useEffect, useCallback, useMemo } = React;
 const SUPABASE_URL = 'https://chdmrjxvqjuowsxssfyt.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_2KDDqLBYn1bGVnaDABbCiA_wp8ruJdN';
 const sbLib = window.supabase;
+// Clear stale auth tokens that cause "Invalid Refresh Token" crashes
+try {
+  const authKey = `sb-${SUPABASE_URL.split('//')[1].split('.')[0]}-auth-token`;
+  const stored = localStorage.getItem(authKey);
+  if (stored) {
+    const parsed = JSON.parse(stored);
+    if (parsed && parsed.expires_at && parsed.expires_at * 1000 < Date.now()) {
+      localStorage.removeItem(authKey);
+    }
+  }
+} catch(e) {}
 const sb = sbLib && sbLib.createClient ? sbLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 /* ── Supabase-backed persisted state hook ─────────────────────────── */
@@ -2934,8 +2945,17 @@ function App() {
   // Check if already logged in
   useEffect(() => {
     if (!sb) { setAuthed(true); setLoading(true); setCheckingSession(false); return; }
-    sb.auth.getUser().then(({ data }) => {
+    sb.auth.getUser().then(({ data, error }) => {
+      if (error) {
+        // Stale/invalid refresh token — clear session and show login
+        sb.auth.signOut().catch(() => {});
+        setCheckingSession(false);
+        return;
+      }
       if (data && data.user) { setUser(data.user); setAuthed(true); setLoading(true); }
+      setCheckingSession(false);
+    }).catch(() => {
+      sb.auth.signOut().catch(() => {});
       setCheckingSession(false);
     });
   }, []);

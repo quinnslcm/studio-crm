@@ -12,26 +12,26 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root, [data-theme="dark"] {
-      --bg: #09090b; --surface: #131316; --surface-hover: #19191d;
-      --border: #1c1c22; --border-light: #26262e;
-      --text: #f4f4f5; --text-secondary: #a1a1aa; --text-muted: #636370;
-      --green: #10b981; --purple: #8b5cf6; --orange: #f97316;
-      --cyan: #06b6d4; --blue: #3b82f6; --red: #ef4444; --yellow: #eab308;
-      --radius: 8px; --radius-sm: 6px;
-      --modal-bg: rgba(19,19,22,0.95); --dropdown-bg: rgba(21,21,24,0.92);
-      --glow-rgb: 16,185,129; --grid-opacity: 0.7;
-      --drop-bg: rgba(255,255,255,0.02);
-    }
-    [data-theme="light"] {
+    :root, [data-theme="light"] {
       --bg: #f8f8fa; --surface: #ffffff; --surface-hover: #f0f0f3;
       --border: #e4e4e7; --border-light: #d4d4d8;
       --text: #18181b; --text-secondary: #52525b; --text-muted: #a1a1aa;
       --green: #059669; --purple: #7c3aed; --orange: #ea580c;
       --cyan: #0891b2; --blue: #2563eb; --red: #dc2626; --yellow: #ca8a04;
+      --radius: 8px; --radius-sm: 6px;
       --modal-bg: rgba(255,255,255,0.92); --dropdown-bg: rgba(255,255,255,0.92);
       --glow-rgb: 5,150,105; --grid-opacity: 0.45;
       --drop-bg: rgba(0,0,0,0.02);
+    }
+    [data-theme="dark"] {
+      --bg: #09090b; --surface: #131316; --surface-hover: #19191d;
+      --border: #1c1c22; --border-light: #26262e;
+      --text: #f4f4f5; --text-secondary: #a1a1aa; --text-muted: #636370;
+      --green: #10b981; --purple: #8b5cf6; --orange: #f97316;
+      --cyan: #06b6d4; --blue: #3b82f6; --red: #ef4444; --yellow: #eab308;
+      --modal-bg: rgba(19,19,22,0.95); --dropdown-bg: rgba(21,21,24,0.92);
+      --glow-rgb: 16,185,129; --grid-opacity: 0.7;
+      --drop-bg: rgba(255,255,255,0.02);
     }
     body { font-family: 'DM Sans', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; overflow: hidden; height: 100vh; }
     #root { height: 100vh; }
@@ -368,6 +368,7 @@ function LoadingScreen({ onDone }) {
   const canvasRef = useRef(null);
   const [fadeOut, setFadeOut] = useState(false);
   const [showWord, setShowWord] = useState(false);
+  const [pct, setPct] = useState(0);
 
   // Code particles
   const codeSnippets = useMemo(() => {
@@ -420,20 +421,32 @@ function LoadingScreen({ onDone }) {
     }
 
     let startTime = performance.now();
+    let globalStart = startTime;
+    const TOTAL_DURATION = 4.8; // seconds total
     let phase = 'gather';
     let raf;
 
     const animate = (now) => {
       const elapsed = (now - startTime) / 1000;
+      const globalElapsed = (now - globalStart) / 1000;
       ctx.clearRect(0, 0, W, H);
 
-      if (phase === 'gather' && elapsed > 1.6) {
+      // Update percentage based on total elapsed
+      const rawPct = Math.min(globalElapsed / (TOTAL_DURATION - 0.6), 1);
+      // Ease the percentage — fast start, slow middle, fast end
+      const easedPct = rawPct < 0.5
+        ? 4 * rawPct * rawPct * rawPct
+        : 1 - Math.pow(-2 * rawPct + 2, 3) / 2;
+      setPct(Math.round(easedPct * 100));
+
+      if (phase === 'gather' && elapsed > 2.0) {
         phase = 'breathe'; startTime = now;
       }
-      if (phase === 'breathe' && (now - startTime) / 1000 > 1.2) {
+      if (phase === 'breathe' && (now - startTime) / 1000 > 1.8) {
         phase = 'disperse'; startTime = now;
       }
-      if (phase === 'disperse' && (now - startTime) / 1000 > 0.6) {
+      if (phase === 'disperse' && (now - startTime) / 1000 > 0.7) {
+        setPct(100);
         setFadeOut(true);
         setTimeout(() => onDone(), 500);
         return;
@@ -443,7 +456,7 @@ function LoadingScreen({ onDone }) {
         let drawX, drawY, drawOp, drawSize;
 
         if (phase === 'gather') {
-          const t = Math.min(elapsed / 1.4, 1);
+          const t = Math.min(elapsed / 1.8, 1);
           const ease = 1 - Math.pow(1 - t, 2.5);
           drawX = cx + p.x + (p.tx - p.x) * ease;
           drawY = cy + p.y + (p.ty - p.y) * ease;
@@ -475,7 +488,7 @@ function LoadingScreen({ onDone }) {
       raf = requestAnimationFrame(animate);
     };
 
-    setTimeout(() => setShowWord(true), 1200);
+    setTimeout(() => setShowWord(true), 1600);
 
     raf = requestAnimationFrame(animate);
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
@@ -492,7 +505,16 @@ function LoadingScreen({ onDone }) {
       )
     ),
     React.createElement('canvas', { ref: canvasRef, className: 'loading-canvas', style: { position:'relative', zIndex:1 } }),
-    React.createElement('div', { className: `loading-wordmark ${showWord ? 'visible' : ''}` }, 'l i g h t w o r k')
+    React.createElement('div', { style: { position:'relative', zIndex:2, textAlign:'center' } },
+      React.createElement('div', { className: `loading-wordmark ${showWord ? 'visible' : ''}` }, 'l i g h t w o r k'),
+      React.createElement('div', {
+        style: {
+          fontFamily:'DM Sans, monospace', fontSize:'10px', letterSpacing:'0.12em',
+          color: showWord ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0)',
+          transition:'color 0.8s ease', fontVariantNumeric:'tabular-nums', marginTop:'8px'
+        }
+      }, `${String(pct).padStart(3,'0')}`)
+    )
   );
 }
 

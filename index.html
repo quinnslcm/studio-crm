@@ -677,12 +677,14 @@ function ContextMenu({ x, y, options, onClose }) {
 }
 
 /* ── Profile Switcher ──────────────────────────────────────────────────── */
-function ProfileSwitcher({ active, onSwitch, counts }) {
+function ProfileSwitcher({ active, onSwitch, counts, sharedProfiles }) {
   const [open, setOpen] = useState(false);
   const [glowing, setGlowing] = useState(false);
   const ref = useRef(null);
-  const p = PROFILES.find(x => x.id === active);
-  const color = PROFILE_COLORS[active];
+  const isShared = active.startsWith('shared:');
+  const sharedMatch = isShared ? (sharedProfiles||[]).find(s => 'shared:'+s.owner_id+':'+s.profile_key === active) : null;
+  const p = isShared ? (sharedMatch ? { id: active, label: sharedMatch.profile_label } : null) : PROFILES.find(x => x.id === active);
+  const color = isShared ? '#6366f1' : PROFILE_COLORS[active];
   useEffect(() => {
     if (!open) return;
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -694,11 +696,11 @@ function ProfileSwitcher({ active, onSwitch, counts }) {
     <div ref={ref} style={{ position:'relative', display:'inline-flex' }}>
       <button className={glowing ? 'glow-pulse' : ''} onClick={() => setOpen(!open)} style={{ display:'flex',alignItems:'center',gap:'8px',padding:'6px 14px 6px 10px',background:color+'18',border:`1px solid ${color}35`,borderRadius:'20px',cursor:'pointer',color:'var(--text)',fontSize:'13px',fontWeight:500,transition:'all 0.3s ease, box-shadow 0.3s ease' }}>
         <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:color,transition:'background 0.3s ease' }} />
-        {p?.label}
+        {p?.label}{isShared && <span style={{ fontSize:'9px',color:'var(--text-muted)',marginLeft:'2px' }}>shared</span>}
         <span style={{ fontSize:'11px',opacity:0.6 }}>{counts[active]||0}</span>
         <span style={{ fontSize:'10px',marginLeft:'2px',opacity:0.5,transition:'transform 0.2s ease',transform:open?'rotate(180deg)':'rotate(0)' }}>{'\u25BC'}</span>
       </button>
-      {open && <div className="dropdown-enter" style={{ position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:50,background:'var(--dropdown-bg)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',border:'1px solid var(--border-light)',borderRadius:'var(--radius)',padding:'4px',minWidth:'200px',boxShadow:'0 12px 40px rgba(0,0,0,0.15), 0 0 20px rgba(var(--glow-rgb),0.06)' }}>
+      {open && <div className="dropdown-enter" style={{ position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:50,background:'var(--dropdown-bg)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',border:'1px solid var(--border-light)',borderRadius:'var(--radius)',padding:'4px',minWidth:'220px',boxShadow:'0 12px 40px rgba(0,0,0,0.15), 0 0 20px rgba(var(--glow-rgb),0.06)' }}>
         {PROFILES.map(pr => { const c = PROFILE_COLORS[pr.id]; const a = pr.id===active; return (
           <button key={pr.id} onClick={() => handleSwitch(pr.id)} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'9px 12px',width:'100%',background:a?c+'15':'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:a?'var(--text)':'var(--text-secondary)',fontSize:'13px',textAlign:'left' }}
             onMouseEnter={e => { if(!a) e.currentTarget.style.background='var(--surface-hover)'; }}
@@ -708,6 +710,27 @@ function ProfileSwitcher({ active, onSwitch, counts }) {
             <span style={{ fontSize:'11px',color:'var(--text-muted)' }}>{counts[pr.id]||0}</span>
           </button>);
         })}
+        {/* Shared profiles */}
+        {(sharedProfiles||[]).length > 0 && (
+          <>
+            <div style={{ height:'1px',background:'var(--border)',margin:'4px 8px' }} />
+            <div style={{ padding:'4px 12px 2px',fontSize:'10px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)' }}>Shared with you</div>
+            {(sharedProfiles||[]).map(s => {
+              const sid = 'shared:'+s.owner_id+':'+s.profile_key;
+              const a = sid===active;
+              return (
+                <button key={s.id} onClick={() => handleSwitch(sid)} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'9px 12px',width:'100%',background:a?'#6366f115':'transparent',border:'none',borderRadius:'var(--radius-sm)',cursor:'pointer',color:a?'var(--text)':'var(--text-secondary)',fontSize:'13px',textAlign:'left' }}
+                  onMouseEnter={e => { if(!a) e.currentTarget.style.background='var(--surface-hover)'; }}
+                  onMouseLeave={e => { if(!a) e.currentTarget.style.background='transparent'; }}>
+                  <span style={{ width:'8px',height:'8px',borderRadius:'50%',background:'#6366f1' }} />
+                  <span style={{ flex:1 }}>{s.profile_label}</span>
+                  <span style={{ fontSize:'9px',padding:'1px 6px',background:'#6366f118',borderRadius:'8px',color:'#6366f1' }}>{s.owner_email.split('@')[0]}</span>
+                  <span style={{ fontSize:'9px',color:'var(--text-muted)' }}>{s.permission}</span>
+                </button>
+              );
+            })}
+          </>
+        )}
       </div>}
     </div>
   );
@@ -3050,7 +3073,7 @@ function SidebarViewItem({ view, isActive, isChild, isExpanded, hasChildren, onT
   );
 }
 
-function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, setSidebarViews, activeProfile, setActiveProfile, profileCounts }) {
+function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, setSidebarViews, activeProfile, setActiveProfile, profileCounts, sharedProfiles }) {
   const [expanded, setExpanded] = usePersistedState('studio-sidebar-expanded', { content: true });
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
@@ -3137,7 +3160,7 @@ function Sidebar({ activeView, setActiveView, theme, setTheme, sidebarViews, set
         <ScrambleLogo />
       </div>
       <div style={{ padding:'10px 12px 4px' }}>
-        <ProfileSwitcher active={activeProfile} onSwitch={setActiveProfile} counts={profileCounts || {}} />
+        <ProfileSwitcher active={activeProfile} onSwitch={setActiveProfile} counts={profileCounts || {}} sharedProfiles={sharedProfiles} />
       </div>
       <div
         onDragOver={e => { e.preventDefault(); if(!dragOverId || dragOverId === '__views_area__') setDragOverId('__views_area__'); }}
@@ -3378,16 +3401,14 @@ function App() {
       .then(({ data }) => {
         if (data && data.length > 0) {
           setSharedProfiles(data);
-          // Load shared data from each owner
-          data.forEach(share => {
+          // Load all shared owners' data
+          const ownerIds = [...new Set(data.map(s => s.owner_id))];
+          ownerIds.forEach(ownerId => {
             ['studio-deals','studio-content','studio-ideas','studio-contacts','studio-idea-folders','studio-quicklinks'].forEach(key => {
-              sb.from('user_data').select('data').eq('user_id', share.owner_id).eq('key', key).single()
+              sb.from('user_data').select('data').eq('user_id', ownerId).eq('key', key).single()
                 .then(({ data: row }) => {
                   if (row && row.data) {
-                    setSharedData(prev => ({
-                      ...prev,
-                      [share.owner_id + ':' + share.profile_key + ':' + key]: row.data
-                    }));
+                    setSharedData(prev => ({ ...prev, [ownerId + ':' + key]: row.data }));
                   }
                 });
             });
@@ -3395,6 +3416,44 @@ function App() {
         }
       });
   }, [user]);
+
+  // Helper: get data for active profile (own or shared)
+  const isSharedProfile = activeProfile.startsWith('shared:');
+  const sharedParts = isSharedProfile ? activeProfile.split(':') : null;
+  const sharedOwnerId = sharedParts ? sharedParts[1] : null;
+  const sharedProfileKey = sharedParts ? sharedParts[2] : null;
+  const sharedPermission = isSharedProfile ? ((sharedProfiles||[]).find(s => s.owner_id === sharedOwnerId && s.profile_key === sharedProfileKey) || {}).permission : null;
+  const canEditShared = sharedPermission === 'edit';
+
+  // Get profile-specific data, either from own state or shared owner's data
+  const getProfileDeals = () => {
+    if (!isSharedProfile) return deals[activeProfile] || [];
+    const ownerDeals = sharedData[sharedOwnerId + ':studio-deals'];
+    return ownerDeals ? (ownerDeals[sharedProfileKey] || []) : [];
+  };
+  const getProfileContent = () => {
+    if (!isSharedProfile) return content[activeProfile] || [];
+    const ownerContent = sharedData[sharedOwnerId + ':studio-content'];
+    return ownerContent ? (ownerContent[sharedProfileKey] || []) : [];
+  };
+  const getProfileIdeas = () => {
+    if (!isSharedProfile) return ideas[activeProfile] || [];
+    const ownerIdeas = sharedData[sharedOwnerId + ':studio-ideas'];
+    return ownerIdeas ? (ownerIdeas[sharedProfileKey] || []) : [];
+  };
+
+  // Write to shared owner's data (for edit permission)
+  const updateSharedData = async (key, profileKey, updater) => {
+    if (!sb || !sharedOwnerId) return;
+    const fullKey = sharedOwnerId + ':' + key;
+    const currentAll = sharedData[fullKey] || {};
+    const currentProfile = currentAll[profileKey] || [];
+    const newProfile = typeof updater === 'function' ? updater(currentProfile) : updater;
+    const newAll = { ...currentAll, [profileKey]: newProfile };
+    setSharedData(prev => ({ ...prev, [fullKey]: newAll }));
+    // Write back to owner's Supabase row
+    await sb.from('user_data').upsert({ user_id: sharedOwnerId, key, data: newAll }, { onConflict: 'user_id,key' });
+  };
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
 
@@ -3436,7 +3495,7 @@ function App() {
   return (
     <div style={{ display:'flex',height:'100vh',position:'relative',transition:'background 0.3s ease, color 0.3s ease' }}>
       <InteractiveGrid />
-      <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} activeProfile={activeProfile} setActiveProfile={setActiveProfile} profileCounts={(() => { const c = {}; PROFILES.forEach(p => { c[p.id] = (deals[p.id]||[]).length + (content[p.id]||[]).length + (ideas[p.id]||[]).length; }); return c; })()} />
+      <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} activeProfile={activeProfile} setActiveProfile={setActiveProfile} sharedProfiles={sharedProfiles} profileCounts={(() => { const c = {}; PROFILES.forEach(p => { c[p.id] = (deals[p.id]||[]).length + (content[p.id]||[]).length + (ideas[p.id]||[]).length; }); return c; })()} />
       {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={deals} setDeals={setDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} customLabels={customLabels.deal || DEAL_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, deal: { ...prev.deal, [stage]: name } }))} />}
       {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} customLabels={customLabels.content || CONTENT_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, content: { ...prev.content, [stage]: name } }))} />}
       {activeView === 'ideas' && <IdeasView ideas={ideas} setIdeas={setIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={content} setContent={setContent} ideaFolders={ideaFolders} setIdeaFolders={setIdeaFolders} />}

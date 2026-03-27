@@ -2495,7 +2495,7 @@ function CalendarView({ deals, content, activeProfile, contacts }) {
 }
 
 /* ── Settings View ─────────────────────────────────────────────────────── */
-function SettingsView({ theme, setTheme, onProfilesChange, user, onLogout }) {
+function SettingsView({ theme, setTheme, onProfilesChange, user, onLogout, sharedProfiles, setSharedProfiles }) {
   const [profiles, setProfiles] = useState([...PROFILES]);
   const [colors, setColors] = useState({ ...PROFILE_COLORS });
   const [editingId, setEditingId] = useState(null);
@@ -2504,6 +2504,65 @@ function SettingsView({ theme, setTheme, onProfilesChange, user, onLogout }) {
   const [newLabel, setNewLabel] = useState('');
   const [newColor, setNewColor] = useState(AVAILABLE_COLORS[0]);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareProfile, setShareProfile] = useState('');
+  const [sharePermission, setSharePermission] = useState('view');
+  const [shareStatus, setShareStatus] = useState('');
+  const [sharesLoading, setSharesLoading] = useState(false);
+  const [myShares, setMyShares] = useState([]);
+  const [sharedWithMe, setSharedWithMe] = useState([]);
+
+  // Load shares on mount
+  useEffect(() => {
+    if (!sb || !user) return;
+    setSharesLoading(true);
+    // Shares I created
+    sb.from('shared_profiles').select('*').eq('owner_id', user.id)
+      .then(({ data }) => { if (data) setMyShares(data); });
+    // Shares with me
+    sb.from('shared_profiles').select('*').eq('shared_with_email', user.email)
+      .then(({ data }) => {
+        if (data) {
+          setSharedWithMe(data);
+          if (setSharedProfiles) setSharedProfiles(data);
+        }
+        setSharesLoading(false);
+      });
+  }, [user]);
+
+  const handleShare = async () => {
+    if (!sb || !user || !shareEmail.trim() || !shareProfile) return;
+    if (shareEmail.trim().toLowerCase() === user.email.toLowerCase()) {
+      setShareStatus('Cannot share with yourself');
+      return;
+    }
+    setShareStatus('Sharing...');
+    const profileObj = profiles.find(p => p.id === shareProfile);
+    const { error } = await sb.from('shared_profiles').upsert({
+      owner_id: user.id,
+      owner_email: user.email,
+      shared_with_email: shareEmail.trim().toLowerCase(),
+      profile_key: shareProfile,
+      profile_label: profileObj ? profileObj.label : shareProfile,
+      permission: sharePermission,
+    }, { onConflict: 'owner_id,shared_with_email,profile_key' });
+    if (error) {
+      setShareStatus('Error: ' + error.message);
+    } else {
+      setShareStatus('Shared successfully');
+      setShareEmail('');
+      // Refresh shares
+      const { data } = await sb.from('shared_profiles').select('*').eq('owner_id', user.id);
+      if (data) setMyShares(data);
+    }
+    setTimeout(() => setShareStatus(''), 3000);
+  };
+
+  const revokeShare = async (shareId) => {
+    if (!sb) return;
+    await sb.from('shared_profiles').delete().eq('id', shareId);
+    setMyShares(prev => prev.filter(s => s.id !== shareId));
+  };
 
   const saveProfiles = (newProfiles, newColors) => {
     PROFILES.length = 0; newProfiles.forEach(p => PROFILES.push(p));
@@ -2653,6 +2712,66 @@ function SettingsView({ theme, setTheme, onProfilesChange, user, onLogout }) {
           </div>
         )}
       </div>
+
+      {/* Sharing */}
+      {user && (
+        <div style={{ marginBottom:'28px' }}>
+          <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Share Profiles</div>
+          <div style={{ padding:'14px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',marginBottom:'10px' }}>
+            <div style={{ display:'flex',gap:'8px',marginBottom:'10px',flexWrap:'wrap' }}>
+              <select value={shareProfile} onChange={e => setShareProfile(e.target.value)}
+                style={{ padding:'6px 10px',fontSize:'12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text)',flex:'0 0 auto' }}>
+                <option value="">Select profile...</option>
+                {profiles.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+              <input value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="user@email.com"
+                onKeyDown={e => { if (e.key === 'Enter') handleShare(); }}
+                style={{ padding:'6px 10px',fontSize:'12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text)',flex:1,minWidth:'140px' }} />
+              <select value={sharePermission} onChange={e => setSharePermission(e.target.value)}
+                style={{ padding:'6px 10px',fontSize:'12px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',color:'var(--text)' }}>
+                <option value="view">View</option>
+                <option value="edit">Edit</option>
+              </select>
+              <button onClick={handleShare} disabled={!shareProfile || !shareEmail.trim()}
+                style={{ padding:'6px 14px',fontSize:'12px',fontWeight:500,background: (!shareProfile || !shareEmail.trim()) ? 'var(--surface-hover)' : 'var(--green)',color: (!shareProfile || !shareEmail.trim()) ? 'var(--text-muted)' : '#fff',border:'none',borderRadius:'var(--radius-sm)',cursor: (!shareProfile || !shareEmail.trim()) ? 'default' : 'pointer' }}>Share</button>
+            </div>
+            {shareStatus && <div style={{ fontSize:'11px',color: shareStatus.startsWith('Error') ? 'var(--red)' : 'var(--green)',marginTop:'4px' }}>{shareStatus}</div>}
+          </div>
+
+          {/* My active shares */}
+          {myShares.length > 0 && (
+            <div style={{ marginBottom:'12px' }}>
+              <div style={{ fontSize:'11px',color:'var(--text-muted)',marginBottom:'6px' }}>You are sharing:</div>
+              {myShares.map(s => (
+                <div key={s.id} style={{ display:'flex',alignItems:'center',gap:'8px',padding:'8px 12px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',marginBottom:'4px',fontSize:'12px' }}>
+                  <span style={{ fontWeight:500 }}>{s.profile_label}</span>
+                  <span style={{ color:'var(--text-muted)' }}>with</span>
+                  <span style={{ flex:1 }}>{s.shared_with_email}</span>
+                  <span style={{ padding:'2px 8px',background: s.permission === 'edit' ? 'rgba(37,99,235,0.1)' : 'rgba(0,0,0,0.04)',borderRadius:'10px',fontSize:'10px',fontWeight:500,color: s.permission === 'edit' ? 'var(--blue)' : 'var(--text-muted)' }}>{s.permission}</span>
+                  <button onClick={() => revokeShare(s.id)}
+                    style={{ background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:'13px',opacity:0.5 }}
+                    onMouseEnter={e => e.currentTarget.style.opacity=1} onMouseLeave={e => e.currentTarget.style.opacity=0.5}>&times;</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Shared with me */}
+          {sharedWithMe.length > 0 && (
+            <div>
+              <div style={{ fontSize:'11px',color:'var(--text-muted)',marginBottom:'6px' }}>Shared with you:</div>
+              {sharedWithMe.map(s => (
+                <div key={s.id} style={{ display:'flex',alignItems:'center',gap:'8px',padding:'8px 12px',background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',marginBottom:'4px',fontSize:'12px' }}>
+                  <span style={{ fontWeight:500 }}>{s.profile_label}</span>
+                  <span style={{ color:'var(--text-muted)' }}>from</span>
+                  <span style={{ flex:1 }}>{s.owner_email}</span>
+                  <span style={{ padding:'2px 8px',background: s.permission === 'edit' ? 'rgba(37,99,235,0.1)' : 'rgba(0,0,0,0.04)',borderRadius:'10px',fontSize:'10px',fontWeight:500,color: s.permission === 'edit' ? 'var(--blue)' : 'var(--text-muted)' }}>{s.permission}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div>
         <div style={{ fontSize:'11px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:'10px' }}>Data</div>
@@ -3238,8 +3357,35 @@ function App() {
   const [quickLinks, setQuickLinks] = useSupabaseState('studio-quicklinks', defaultProfileLinks, user);
   const [sidebarViews, setSidebarViews] = useSupabaseState('studio-sidebar-views', DEFAULT_SIDEBAR_VIEWS, user);
   const [theme, setTheme] = useSupabaseState('studio-theme', 'light', user);
+  const [sharedProfiles, setSharedProfiles] = useState([]);
+  const [sharedData, setSharedData] = useState({});
   const [openCard, setOpenCard] = useState(null);
   const [openCardType, setOpenCardType] = useState(null);
+
+  // Load shared profiles on login
+  useEffect(() => {
+    if (!sb || !user) return;
+    sb.from('shared_profiles').select('*').eq('shared_with_email', user.email)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setSharedProfiles(data);
+          // Load shared data from each owner
+          data.forEach(share => {
+            ['studio-deals','studio-content','studio-ideas','studio-contacts','studio-idea-folders','studio-quicklinks'].forEach(key => {
+              sb.from('user_data').select('data').eq('user_id', share.owner_id).eq('key', key).single()
+                .then(({ data: row }) => {
+                  if (row && row.data) {
+                    setSharedData(prev => ({
+                      ...prev,
+                      [share.owner_id + ':' + share.profile_key + ':' + key]: row.data
+                    }));
+                  }
+                });
+            });
+          });
+        }
+      });
+  }, [user]);
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
 
@@ -3288,7 +3434,7 @@ function App() {
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} contacts={contacts} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
-      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} user={user} onLogout={async () => {
+      {activeView === 'settings' && <SettingsView theme={theme} setTheme={setTheme} onProfilesChange={() => setActiveProfile(p => PROFILES.find(pr=>pr.id===p) ? p : (PROFILES[0]||{}).id || 'culture')} user={user} sharedProfiles={sharedProfiles} setSharedProfiles={setSharedProfiles} onLogout={async () => {
               if (sb) await sb.auth.signOut();
               // Clear data localStorage so next login re-fetches from Supabase
               ['studio-deals','studio-content','studio-ideas','studio-contacts','studio-archive',

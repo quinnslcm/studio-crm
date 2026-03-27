@@ -1050,7 +1050,7 @@ function DealCard({ deal, profileId, onOpen, onArchive, onDelete, onDuplicate, s
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
-    <div className="card-enter" draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: deal.id, type: 'deal' }; e.currentTarget.classList.add('card-dragging'); }}
+    <div className="card-enter" draggable onDragStart={e => { e.dataTransfer.effectAllowed = e.altKey ? 'copy' : 'move'; dragData = { id: deal.id, type: 'deal', alt: e.altKey, source: deal }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
       onClick={(e) => { if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); onSelect && onSelect(deal.id, e); } else { onOpen(deal); } }}
       onContextMenu={handleContext}
@@ -1094,7 +1094,7 @@ function ContentCard({ item, onOpen, onArchive, onDelete, onDuplicate, selected,
   const handleContext = (e) => { e.preventDefault(); e.stopPropagation(); setCtx({ x: e.clientX, y: e.clientY }); };
   return (
     <>
-    <div className="card-enter" draggable onDragStart={e => { e.dataTransfer.effectAllowed='move'; dragData = { id: item.id, type: 'content' }; e.currentTarget.classList.add('card-dragging'); }}
+    <div className="card-enter" draggable onDragStart={e => { e.dataTransfer.effectAllowed = e.altKey ? 'copy' : 'move'; dragData = { id: item.id, type: 'content', alt: e.altKey, source: item }; e.currentTarget.classList.add('card-dragging'); }}
       onDragEnd={e => { e.currentTarget.classList.remove('card-dragging'); dragData = null; }}
       onClick={(e) => { if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); onSelect && onSelect(item.id, e); } else { onOpen(item); } }}
       onContextMenu={handleContext}
@@ -1167,7 +1167,7 @@ function SelectionToolbar({ count, onDelete, onArchive, onMove, stages, onClear 
 }
 
 /* ── Drop Column ───────────────────────────────────────────────────────── */
-function DropColumn({ stageKey, label, count, totalValue, children, onDrop, onRenameLabel }) {
+function DropColumn({ stageKey, label, count, totalValue, children, onDrop, onDuplicate, onRenameLabel }) {
   const [over, setOver] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editVal, setEditVal] = useState(label);
@@ -1180,9 +1180,9 @@ function DropColumn({ stageKey, label, count, totalValue, children, onDrop, onRe
   };
   return (
     <div
-      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect='move'; setOver(true); }}
+      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = (e.altKey || (dragData && dragData.alt)) ? 'copy' : 'move'; setOver(true); }}
       onDragLeave={() => setOver(false)}
-      onDrop={e => { e.preventDefault(); setOver(false); if (dragData) onDrop(dragData.id, stageKey); }}
+      onDrop={e => { e.preventDefault(); setOver(false); if (dragData) { if ((e.altKey || dragData.alt) && dragData.source && onDuplicate) { onDuplicate(dragData.source, stageKey); } else { onDrop(dragData.id, stageKey); } } }}
       className={over ? 'drop-target' : ''}
       style={{ flex:'1 1 0',minWidth:'200px',padding:'4px',transition:'background 0.15s' }}
     >
@@ -1332,6 +1332,10 @@ function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCar
     const copy = { ...deal, id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), title: deal.title + ' (copy)' };
     setDeals(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), copy] }));
   };
+  const duplicateDealToStage = (deal, stage) => {
+    const copy = { ...deal, id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), title: deal.title + ' (copy)', stage };
+    setDeals(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), copy] }));
+  };
 
   return (
     <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden' }}>
@@ -1358,7 +1362,7 @@ function DealsView({ activeProfile, setActiveProfile, deals, setDeals, onOpenCar
           {DEAL_STAGES.map(stage => {
             const sd = profileDeals.filter(d => d.stage === stage);
             return (
-              <DropColumn key={stage} stageKey={stage} label={(customLabels || DEAL_LABELS)[stage] || stage.toUpperCase()} count={sd.length} totalValue={sd.reduce((s,d)=>s+d.value,0)} onDrop={moveDeal} onRenameLabel={onRenameLabel}>
+              <DropColumn key={stage} stageKey={stage} label={(customLabels || DEAL_LABELS)[stage] || stage.toUpperCase()} count={sd.length} totalValue={sd.reduce((s,d)=>s+d.value,0)} onDrop={moveDeal} onDuplicate={duplicateDealToStage} onRenameLabel={onRenameLabel}>
                 {sd.map(d => <DealCard key={d.id} deal={d} profileId={activeProfile} onOpen={c => onOpenCard(c, 'deal')} onArchive={archiveDeal} onDelete={deleteDeal} onDuplicate={duplicateDeal} selected={selected.has(d.id)} onSelect={toggleSelect} />)}
               </DropColumn>
             );
@@ -1405,6 +1409,10 @@ function ContentView({ activeProfile, setActiveProfile, content, setContent, onO
     const copy = { ...item, id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), title: item.title + ' (copy)', platforms: [...item.platforms] };
     setContent(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), copy] }));
   };
+  const duplicateContentToStage = (item, stage) => {
+    const copy = { ...item, id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), title: item.title + ' (copy)', platforms: [...item.platforms], stage };
+    setContent(prev => ({ ...prev, [activeProfile]: [...(prev[activeProfile]||[]), copy] }));
+  };
 
   return (
     <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden' }}>
@@ -1429,7 +1437,7 @@ function ContentView({ activeProfile, setActiveProfile, content, setContent, onO
           {CONTENT_STAGES.map(stage => {
             const si = profileContent.filter(c => c.stage === stage);
             return (
-              <DropColumn key={stage} stageKey={stage} label={(customLabels || CONTENT_LABELS)[stage] || stage.toUpperCase()} count={si.length} onDrop={moveContent} onRenameLabel={onRenameLabel}>
+              <DropColumn key={stage} stageKey={stage} label={(customLabels || CONTENT_LABELS)[stage] || stage.toUpperCase()} count={si.length} onDrop={moveContent} onDuplicate={duplicateContentToStage} onRenameLabel={onRenameLabel}>
                 {si.map(c => <ContentCard key={c.id} item={c} onOpen={card => onOpenCard(card, 'content')} onArchive={archiveContent} onDelete={deleteContent} onDuplicate={duplicateContent} selected={selected.has(c.id)} onSelect={toggleSelect} />)}
               </DropColumn>
             );

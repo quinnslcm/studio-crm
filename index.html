@@ -3504,23 +3504,45 @@ function App() {
     : ideas;
 
   // Setters that route to shared owner's data when needed
+  // Views call: setDeals(prev => ({...prev, [activeProfile]: newArray}))
+  // We intercept, extract the data under activeProfile, and write it to owner's DB under sharedProfileKey
   const effectiveSetDeals = isSharedProfile && canEditShared
-    ? (updater) => { updateSharedData('studio-deals', sharedProfileKey, typeof updater === 'function' ? (prev) => { const all = sharedData[sharedOwnerId+':studio-deals'] || {}; const result = updater({ ...all }); return result[sharedProfileKey] || []; } : updater); }
+    ? (updater) => {
+        const current = effectiveDeals;
+        const next = typeof updater === 'function' ? updater(current) : updater;
+        const profileData = next[activeProfile] || [];
+        updateSharedData('studio-deals', sharedProfileKey, profileData);
+      }
     : setDeals;
   const effectiveSetContent = isSharedProfile && canEditShared
-    ? (updater) => { updateSharedData('studio-content', sharedProfileKey, typeof updater === 'function' ? (prev) => { const all = sharedData[sharedOwnerId+':studio-content'] || {}; const result = updater({ ...all }); return result[sharedProfileKey] || []; } : updater); }
+    ? (updater) => {
+        const current = effectiveContent;
+        const next = typeof updater === 'function' ? updater(current) : updater;
+        const profileData = next[activeProfile] || [];
+        updateSharedData('studio-content', sharedProfileKey, profileData);
+      }
     : setContent;
   const effectiveSetIdeas = isSharedProfile && canEditShared
-    ? (updater) => { updateSharedData('studio-ideas', sharedProfileKey, typeof updater === 'function' ? (prev) => { const all = sharedData[sharedOwnerId+':studio-ideas'] || {}; const result = updater({ ...all }); return result[sharedProfileKey] || []; } : updater); }
+    ? (updater) => {
+        const current = effectiveIdeas;
+        const next = typeof updater === 'function' ? updater(current) : updater;
+        const profileData = next[activeProfile] || [];
+        updateSharedData('studio-ideas', sharedProfileKey, profileData);
+      }
     : setIdeas;
+  // Block writes entirely for view-only shared profiles
+  const noopSet = () => {};
+  const finalSetDeals = isSharedProfile && !canEditShared ? noopSet : effectiveSetDeals;
+  const finalSetContent = isSharedProfile && !canEditShared ? noopSet : effectiveSetContent;
+  const finalSetIdeas = isSharedProfile && !canEditShared ? noopSet : effectiveSetIdeas;
 
   return (
     <div style={{ display:'flex',height:'100vh',position:'relative',transition:'background 0.3s ease, color 0.3s ease' }}>
       <InteractiveGrid />
       <Sidebar activeView={activeView} setActiveView={setActiveView} theme={theme} setTheme={setTheme} sidebarViews={sidebarViews} setSidebarViews={setSidebarViews} activeProfile={activeProfile} setActiveProfile={setActiveProfile} sharedProfiles={sharedProfiles} profileCounts={(() => { const c = {}; PROFILES.forEach(p => { c[p.id] = (deals[p.id]||[]).length + (content[p.id]||[]).length + (ideas[p.id]||[]).length; }); return c; })()} />
-      {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={effectiveDeals} setDeals={effectiveSetDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} customLabels={customLabels.deal || DEAL_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, deal: { ...prev.deal, [stage]: name } }))} readOnly={isSharedProfile && !canEditShared} />}
-      {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={effectiveContent} setContent={effectiveSetContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} customLabels={customLabels.content || CONTENT_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, content: { ...prev.content, [stage]: name } }))} readOnly={isSharedProfile && !canEditShared} />}
-      {activeView === 'ideas' && <IdeasView ideas={effectiveIdeas} setIdeas={effectiveSetIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={effectiveContent} setContent={effectiveSetContent} ideaFolders={ideaFolders} setIdeaFolders={setIdeaFolders} readOnly={isSharedProfile && !canEditShared} />}
+      {activeView === 'deals' && <DealsView activeProfile={activeProfile} setActiveProfile={setActiveProfile} deals={effectiveDeals} setDeals={finalSetDeals} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'deal')} customLabels={customLabels.deal || DEAL_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, deal: { ...prev.deal, [stage]: name } }))} readOnly={isSharedProfile && !canEditShared} />}
+      {activeView === 'content' && <ContentView activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={effectiveContent} setContent={finalSetContent} onOpenCard={handleOpenCard} onArchiveCard={(card, type) => handleDirectArchive(card, type || 'content')} quickLinks={quickLinks} setQuickLinks={setQuickLinks} customLabels={customLabels.content || CONTENT_LABELS} onRenameLabel={(stage, name) => setCustomLabels(prev => ({ ...prev, content: { ...prev.content, [stage]: name } }))} readOnly={isSharedProfile && !canEditShared} />}
+      {activeView === 'ideas' && <IdeasView ideas={effectiveIdeas} setIdeas={finalSetIdeas} activeProfile={activeProfile} setActiveProfile={setActiveProfile} content={effectiveContent} setContent={finalSetContent} ideaFolders={ideaFolders} setIdeaFolders={setIdeaFolders} readOnly={isSharedProfile && !canEditShared} />}
       {activeView === 'contacts' && <ContactsView contacts={contacts} setContacts={setContacts} activeProfile={activeProfile} setActiveProfile={setActiveProfile} />}
       {activeView === 'calendar' && <CalendarView deals={deals} content={content} activeProfile={activeProfile} contacts={contacts} />}
       {activeView === 'archive' && <ArchiveView archive={archive} setArchive={setArchive} deals={deals} setDeals={setDeals} content={content} setContent={setContent} />}
